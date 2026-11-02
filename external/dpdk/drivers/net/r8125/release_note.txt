@@ -1,0 +1,183 @@
+---------------------------------------------------
+release date: 2024.5.8
+driver version: 2.19.18
+01.Remove support for rtl8126.
+02.Add support for speed change.
+   Speed change cmd in testpmd:
+   stop
+   port stop 0
+   port config 0 speed 100 duplex full
+   port start 0
+   start
+   Closes: NICFAE-1954
+03.Add support for rtl8125bp(rl6936/rl6936b).
+   VID:10EC
+   DID:8125
+   REVID:08
+   TCR:0x6800
+04.Add support for rtl8125d(rl6938/rl6938b).
+   VID:10EC
+   DID:8125
+   REVID:0C
+   TCR:0x6880
+05.Remove disable IORDYL23.
+   According to driver note driver should keep the setting of this bit.
+   In addition, we have seen tx hang on resume when IORDYL23 is
+   disabled.
+   Link: NICQC-3150
+   Platform: ASUS Z97-C
+06.Optimize tx clean function.
+   The patch is from r8125: fix tx stop when tx no close is enabled.
+   https://cm1sd1.rtkbf.com/gerrit/c/PCIE/Linux/+/28968
+07.Update rtl8125a_ops and rtl8125b_ops.
+   The patch is from the two commits below.
+   https://cm1sd1.rtkbf.com/gerrit/c/PCIE/Linux/+/23677
+   https://cm1sd1.rtkbf.com/gerrit/c/PCIE/Linux/+/7837
+08.Driver note "RL6938_PCIe_Driver_Note_v1.0".
+   Add mcu patch to modify L1.2 missing links.
+   Doc: RL6938_PCIe_Driver_Note_v1.0
+   Chip: RL6938
+09.Driver note "RL6936_Pcie_Driver_Note_MAC_v2.1.xlsx".
+   Add mcu patch to modify L1.2 missing links.
+   Doc: RL6936_Pcie_Driver_Note_MAC_v2.1.xlsx
+   Chip: RL6936B
+10.Driver note "RL6936_Pcie_Driver_Note_MAC_v2.2.xlsx".
+   Update bp0 and bp1 mcu patch.
+   Doc: RL6936_Pcie_Driver_Note_MAC_v2.2.xlsx
+   Chip: RL6936B
+11.Update rtl8125/rtl8125b/rtl8125d rx dma burst size.
+   According to driver note, these chip's rx dma burst size should be
+   set to 256 bytes which is 4 (the definition of rx dma burst size is
+   changed after rtl8125).
+   Chip: RL6486/RL6637/RL6938
+   Link: https://wiki.realtek.com/display/NICMAC/PCIE+NIC+feature+list
+12.Driver note "RL6938_PCIe_Driver_Note_v1.6.xlsx".
+   - Update gphy ramcode to "RL6938_tgphy_ramcode_patch_v23_pcie_20240314.cfg".
+   - Update issue#5 (AFE_TX_Parameter).
+   Doc: RL6938_PCIe_Driver_Note_v1.6.xlsx
+   Chip: RL6938
+13.Driver note "RLE0948_Driver_Note_MAC_beta_9.9.xlsx".
+   Update ram code to patch poe cdt issue.
+   Doc: RLE0948_Driver_Note_MAC_beta_9.9.xlsx
+   Chip: RL6637B
+14.Fix one bug in queue setup function.
+   Queue_id and port_id were used before being assigned values.
+15.Add support for queue state.
+16.Add driver_start and driver_stop.
+   rtl8125ap and rtl8125bp need driver start and stop whether dash is
+   enabled or not.
+17.Sync with fw when set advanced eee and mac/idle speed down.
+   rtl8125ap and rtl8125bp, when dash is enabled, need to acquire IB/OOB
+   mutex lock when set advanced eee and mac/idle speed down.
+   Chip: RL6486/RL6936
+18.Update function name.
+   rtl8125_clear_and_set_mcu_access_reg_bit() -> rtl8125_clear_set_mac_ocp_bit().
+   rtl8125_set_mcu_access_reg_bit() -> rtl8125_set_mac_ocp_bit().
+   rtl8125_clear_mcu_access_reg_bit() -> rtl8125_clear_mac_ocp_bit().
+---------------------------------------------------
+release date: 2024.2.26
+driver version: 1.19.54
+01.Add support for link change interrupt.
+02.Add support for tx/rx checksum, tso and vlan tag offload.
+03.Use rte_socket_id() to get current socket id.
+04.Code refactor.
+05.Fix typo.
+06.Disable magic packet and add setting TxConfig to default.
+07.Fix some compiler warning messages.
+08.Add release dma zone (tx_ring/rx_ring/tally_counters).
+09.Add wait phy LAN ON(3) after power up phy.
+10.Disable ALDPS.
+11.Add support for fw_version_get.
+12.Add support for allmulticast_enable/allmulticast_disable.
+13.Add output logs.
+   Type is pmd net.r8125.xx.
+14.Fix some compiler warning messages.
+   //RTL_W32(hw, TCTR0_8125, 0); for the speed of size 64.
+15.Use Astyle to format code.
+   CMD:astyle *.c --style=linux --indent=spaces=8.
+16.Fix RTL8125 series tx hang issue.
+   Root cause:[NICSW-1755]
+   If packet is UDP packet + detestation port is 0x13f or 0x140 + UDP
+   length less than 47 bytes, hardware will parsing this packet as PTP packet.
+   But, as PTP packet, its UDP payload length is too short for hardware.
+   Then hardware will stuck in parsing this packet.
+17.Fix system crash when tx no close is enabled and pcie link is down.
+   When pcie link is down, driver will get 0xffff when read hw_clo_ptr_reg.
+   Then driver will have the wrong tx_left and unmap the wrong tx_skb.
+18.For RTL8125B, only issue pause frame once.
+19.Code refactor.
+   fix some bugs, ISR and IMR (16 to 30), modify about rtl8125_hw_clear_int_miti
+20.Update rtl8125_hw_config update.
+21.Update rtl8125a_ops and rtl8125b_ops.
+22.Disable eee/eee plus.
+23.Add volatile for Tx/Rx desc.
+   volatile struct rtl8125_tx_desc *hw_ring; volatile struct rtl8125_rx_desc *hw_ring;
+24.Alloc one more trx desc than nb_trx_desc.
+25.Code refactor about trx_en.
+26.Improve rx data path.
+27.Improve the name of the structures and functions.
+28.Improve tx data path about writing xmit reg.
+   When the number of tx is 0, do not write xmit reg.
+29.Add support for rxq_info_get and txq_info_get.
+30.Fix some compiler warning messages.
+31.Enable rx multifetch.
+32.Support 8126A.
+33.Fix typo about 8125A and 8125B.
+34.Use Astyle to format code.
+   CMD: astyle -A8 -t8 -p -H -U -k3 -xj -xB -xC80 -xL -n -r "*.c" "*.h"
+35.Format code about comment style.
+   According to DPDK Coding Style 1.3 C Comment Style.
+   DPDK Coding Style: https://doc.dpdk.org/guides/contributing/coding_style.html
+36.Format code about C Preprocessor Directives.
+   According to DPDK Coding Style 1.4 C Preprocessor Directives.
+   DPDK Coding Style: https://doc.dpdk.org/guides/contributing/coding_style.html
+37.Format code about C Types.
+   According to DPDK Coding Style 1.5 C Types.
+   DPDK Coding Style: https://doc.dpdk.org/guides/contributing/coding_style.html
+38.Format code about C Indentation.
+   According to DPDK Coding Style 1.7 C Indentation.
+   DPDK Coding Style: https://doc.dpdk.org/guides/contributing/coding_style.html
+39.Format code about C Function Definition, Declaration and Use.
+   According to DPDK Coding Style 1.8 C Function Definition, Declaration and Use.
+   DPDK Coding Style: https://doc.dpdk.org/guides/contributing/coding_style.html
+40.Format code about C Statement Style and Conventions.
+   According to DPDK Coding Style 1.9 C Statement Style and Conventions.
+   DPDK Coding Style: https://doc.dpdk.org/guides/contributing/coding_style.html
+41.Improve PHY MDI SWAP patch.
+   For RTL8125A and RTL8168KB, update driver according to Driver Note GPHY_Ver.B item 13.
+42.Use version number to distinguish PMDs.
+   The first number will be changed only when there is a great change.
+   The second number will be the same as the DPDK version number.
+   The third number will be changed every commit and
+   will be reset to 0 if the first two numbers are changed.
+43.Mask ALDPS status and event_wake_all_r falling when power down.
+   This patch is for the jira NICFAE-1544.
+   If the nic leaves ALDPS status after power down and up, it will disable trx
+   and need mac reset.
+44.Make sure PME_ISR_IMR bit 11 and 14 is 1.
+   If ALDPS status and event_wake_all_r falling are masked before link
+   up, trx will be cleared when the nic leaves aldps which occurs in
+   DPDK 21 but not DPDK 19.
+45.Support jumbo frames.
+46.Support scattered rx.
+47.Update some small improvements.
+   Remove tx_en and rx_en, rewrite TxConfig only when link up, clear rxd->opts2,
+   remove DEV_RX_OFFLOAD_KEEP_CRC and so on.
+48.Replace assert with RTE_ASSERT.
+49.Improve rtl8125 ptp patch.
+50.Improve rx data path about prefetch.
+51.Confirm comment style.
+   The first letter should be capitalized, while the rest should be lowercase.
+   If the comment is a sentence, it should end with a period.
+   Special words such as VLAN can be written in uppercase.
+52.Define or declare dsec struct without volatile.
+53.Remove debug code.
+54.Fix cannot link to max supported speed issue.
+   For default chip, its max support link speed is 1000, so it will call
+   "rtl8125_link_option_giga" to validate the link options that will
+   clear advertise bits above gigabit. That will cause 2.5g and 5g device
+   cannot link to its max supported speed. In this patch, remove the
+   function of changing speed_mode/duplex_mode/autoneg_mode. And also
+   removing variable advertising_mode, because it can only be declared
+   max to 32 bits long, but "RTK_ADVERTISED_5000baseX_Full" is defined
+   as bit 48, it needs 64 bit long variable to store it.

@@ -1,0 +1,10 @@
+#include "base/base.config"
+#include "base/recovery.config"
+#include "chips/rk3588_aarch64.config"
+
+BR2_PACKAGE_GPTFDISK=y
+
+BR2_PACKAGE_GPTFDISK_SGDISK=y
+
+# Recovery must not pull board test/rootfs overlays (topeet_test/oem/media/etc).
+BR2_ROOTFS_OVERLAY="board/rockchip/common/base"

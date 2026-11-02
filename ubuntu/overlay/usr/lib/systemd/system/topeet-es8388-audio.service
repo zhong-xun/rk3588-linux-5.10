@@ -1,0 +1,12 @@
+[Unit]
+Description=Topeet ES8388 mixer defaults
+Wants=sound.target
+After=sound.target alsa-restore.service multi-user.target graphical.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/local/sbin/topeet-es8388-audio
+
+[Install]
+WantedBy=multi-user.target

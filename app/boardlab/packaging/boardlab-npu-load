@@ -1,0 +1,109 @@
+#!/usr/bin/env sh
+# Restricted root-side RKNPU load reader for BoardLab.
+#
+# The sudo policy grants access only to this root-owned file with no
+# arguments.  Keep the debugfs path fixed and emit only parsed one-, two-, or
+# three-core percentages; raw debugfs content must never cross this boundary.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+NPU_LOAD_PATH=/sys/kernel/debug/rknpu/load
+AWK=/usr/bin/awk
+if [ ! -x "$AWK" ] && [ -x /bin/awk ]; then
+    AWK=/bin/awk
+fi
+
+deny() {
+    printf '%s\n' 'Topeet development-board test platform NPU helper: request denied.' >&2
+    exit 64
+}
+
+unavailable() {
+    printf '%s\n' 'Topeet development-board test platform NPU helper: RKNPU load is unavailable.' >&2
+    exit 69
+}
+
+# Defense in depth: sudoers also pins this command to an empty argument list.
+[ "$#" -eq 0 ] || deny
+[ -x "$AWK" ] || unavailable
+[ -r "$NPU_LOAD_PATH" ] || unavailable
+
+# RKNPU debugfs output differs by hardware generation:
+#   RK3562/RK3568: NPU load:  12%
+#   RK3576:        NPU load:  Core0: 12%, Core1: 34%,
+#   RK3588:        NPU load:  Core0: 12%, Core1: 34%, Core2: 56%,
+# Accept whitespace and an optional final comma only. Values are constrained to
+# integer percentages so malformed or unexpected driver output cannot be
+# reflected into JSON or a shell command.
+if ! LC_ALL=C "$AWK" '
+BEGIN {
+    records = 0
+    valid = 0
+    invalid = 0
+}
+{
+    records++
+    if (records != 1) {
+        invalid = 1
+        next
+    }
+
+    if ($0 ~ /^[[:space:]]*NPU[[:space:]]+load:[[:space:]]*(0|[1-9][0-9]?|100)%,?[[:space:]]*$/) {
+        value = $0
+        sub(/^[[:space:]]*NPU[[:space:]]+load:[[:space:]]*/, "", value)
+        sub(/%,?[[:space:]]*$/, "", value)
+        core0 = value + 0
+        core_count = 1
+        valid = 1
+        next
+    }
+
+    if ($0 ~ /^[[:space:]]*NPU[[:space:]]+load:[[:space:]]*Core0:[[:space:]]*(0|[1-9][0-9]?|100)%,[[:space:]]*Core1:[[:space:]]*(0|[1-9][0-9]?|100)%,?[[:space:]]*$/) {
+        split($0, parts, /,/)
+        sub(/^[[:space:]]*NPU[[:space:]]+load:[[:space:]]*Core0:[[:space:]]*/, "", parts[1])
+        sub(/%[[:space:]]*$/, "", parts[1])
+        sub(/^[[:space:]]*Core1:[[:space:]]*/, "", parts[2])
+        sub(/%[[:space:]]*$/, "", parts[2])
+        core0 = parts[1] + 0
+        core1 = parts[2] + 0
+        core_count = 2
+        valid = 1
+        next
+    }
+
+    if ($0 ~ /^[[:space:]]*NPU[[:space:]]+load:[[:space:]]*Core0:[[:space:]]*(0|[1-9][0-9]?|100)%,[[:space:]]*Core1:[[:space:]]*(0|[1-9][0-9]?|100)%,[[:space:]]*Core2:[[:space:]]*(0|[1-9][0-9]?|100)%,?[[:space:]]*$/) {
+        split($0, parts, /,/)
+        sub(/^[[:space:]]*NPU[[:space:]]+load:[[:space:]]*Core0:[[:space:]]*/, "", parts[1])
+        sub(/%[[:space:]]*$/, "", parts[1])
+        sub(/^[[:space:]]*Core1:[[:space:]]*/, "", parts[2])
+        sub(/%[[:space:]]*$/, "", parts[2])
+        sub(/^[[:space:]]*Core2:[[:space:]]*/, "", parts[3])
+        sub(/%[[:space:]]*$/, "", parts[3])
+        core0 = parts[1] + 0
+        core1 = parts[2] + 0
+        core2 = parts[3] + 0
+        core_count = 3
+        valid = 1
+        next
+    }
+
+    invalid = 1
+}
+END {
+    if (records != 1 || invalid || !valid) {
+        exit 2
+    }
+    if (core_count == 1) {
+        printf "{\"core0\":%d}\n", core0
+    } else if (core_count == 2) {
+        printf "{\"core0\":%d,\"core1\":%d}\n", core0, core1
+    } else if (core_count == 3) {
+        printf "{\"core0\":%d,\"core1\":%d,\"core2\":%d}\n", core0, core1, core2
+    } else {
+        exit 2
+    }
+}
+' "$NPU_LOAD_PATH" 2>/dev/null; then
+    unavailable
+fi

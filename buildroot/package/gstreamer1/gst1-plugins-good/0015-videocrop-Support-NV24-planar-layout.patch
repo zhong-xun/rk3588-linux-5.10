@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Topeet <support@topeet.com>
+Date: Mon, 27 Jul 2026 15:25:00 +0800
+Subject: [PATCH 15/15] videocrop: Support NV24 through the planar crop path
+
+RK3588 HDMI RX delivers YUV 4:4:4 as NV24. CameraBin inserts videocrop
+after v4l2src, but videocrop only classifies NV12 and NV21 as supported
+semi-planar formats. This makes the CameraBin viewfinder fail with
+not-negotiated even after V4L2 has correctly opened the device.
+
+NV24 has a full-height interleaved UV plane, so it must use the generic
+planar crop routine rather than the NV12-specific semi-planar routine,
+which assumes vertically subsampled chroma. The generic routine already
+uses GstVideoFormatInfo's plane strides and subsampling factors.
+
+Signed-off-by: Topeet <support@topeet.com>
+---
+ gst/videocrop/gstvideocrop.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/gst/videocrop/gstvideocrop.c b/gst/videocrop/gstvideocrop.c
+--- a/gst/videocrop/gstvideocrop.c
++++ b/gst/videocrop/gstvideocrop.c
+@@ -900,6 +900,10 @@ gst_video_crop_set_info (GstVideoFilter * vfilter, GstCaps * in,
+     case GST_VIDEO_FORMAT_Y41B:
+       crop->packing = VIDEO_CROP_PIXEL_FORMAT_PLANAR;
+       break;
++    case GST_VIDEO_FORMAT_NV24:
++      /* NV24 has a full-height UV plane; use format-aware plane copying. */
++      crop->packing = VIDEO_CROP_PIXEL_FORMAT_PLANAR;
++      break;
+     case GST_VIDEO_FORMAT_NV12:
+     case GST_VIDEO_FORMAT_NV21:
+       crop->packing = VIDEO_CROP_PIXEL_FORMAT_SEMI_PLANAR;
+-- 
+2.43.0
+

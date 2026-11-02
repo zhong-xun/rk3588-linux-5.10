@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://boardlab.local/schema/board-profile-v1.json",
+  "title": "BoardLab board profile",
+  "type": "object",
+  "required": ["schemaVersion", "match"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "socFamily": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "match": {
+      "description": "Required DT guards. compatible/modelContains groups are ANDed; values inside a group are ORed.",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "compatible": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "modelContains": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "gpioAliases": {
+      "description": "Logical names mapped to gpiochipN:offset, line:name, GPIOx_Ay, or a legacy global number.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          { "type": "integer", "minimum": 0 }
+        ]
+      }
+    },
+    "ledPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^/sys/class/leds/[^/]+$"
+      },
+      "uniqueItems": true
+    },
+    "npuYolo": {
+      "description": "Optional RKNN model and execution policy. Unknown SoCs that enable npuyolodemo must provide modelFileName.",
+      "type": "object",
+      "properties": {
+        "platformId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96
+        },
+        "modelFileName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,126}\\.[rR][kK][nN][nN]$"
+        },
+        "workerCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "telemetryCoreCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "pinWorkersToCores": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

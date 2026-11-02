@@ -1,0 +1,23 @@
+[Unit]
+Description=迅为开发板测试平台 X11 kiosk（北京迅为电子）
+After=display-manager.service systemd-user-sessions.service network-online.target
+Wants=display-manager.service network-online.target
+
+[Service]
+Type=simple
+User=topeet
+SupplementaryGroups=input video render dialout netdev audio gpio boardlab-wifi boardlab-npu
+WorkingDirectory=/opt/boardlab
+ExecStart=/opt/boardlab/bin/boardlab-run
+Restart=on-failure
+RestartSec=2
+Environment=DISPLAY=:0
+Environment=QT_QPA_PLATFORM=xcb
+Environment=QT_XCB_GL_INTEGRATION=none
+Environment=QT_QUICK_BACKEND=software
+Environment=QSG_RENDER_LOOP=basic
+Environment=QML_DISABLE_DISK_CACHE=0
+Environment=BOARDLAB_WEB_TOKEN_FILE=/etc/boardlab/web.token
+
+[Install]
+WantedBy=multi-user.target

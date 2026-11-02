@@ -1,0 +1,71 @@
+From 2f1c978e1cf53360d1d56e94c0f5c23050efcd93 Mon Sep 17 00:00:00 2001
+From: Simon Xue <xxm@rock-chips.com>
+Date: Wed, 24 May 2023 08:56:27 +0800
+Subject: [PATCH 5/6] mm/hugetlb: limit hugetlb page under 4G
+
+Change-Id: I6201af3bfedbe109c93929977733c08d1bbfa612
+Signed-off-by: Simon Xue <xxm@rock-chips.com>
+---
+ mm/hugetlb.c | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/mm/hugetlb.c b/mm/hugetlb.c
+index 493f862c59d4..187c82bfa682 100644
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -49,6 +49,8 @@ struct hstate hstates[HUGE_MAX_HSTATE];
+ static struct cma *hugetlb_cma[MAX_NUMNODES];
+ #endif
+ static unsigned long hugetlb_cma_size __initdata;
++static unsigned long hugetlb_cma_base __initdata;
++#define RK_HUGETLB_CMA_ORDER 13 /* Default need 1G, resize it */
+ 
+ /*
+  * Minimum page order among possible hugepage sizes, set to a proper value
+@@ -5160,6 +5162,12 @@ static bool cma_reserve_called __initdata;
+ static int __init cmdline_parse_hugetlb_cma(char *p)
+ {
+ 	hugetlb_cma_size = memparse(p, &p);
++	if (*p != '@')
++		return 0;
++	hugetlb_cma_base = memparse(p + 1, &p);
++
++	pr_info("%s,%d, size = 0x%lx, base = 0x%lx\n", __func__, __LINE__,
++		hugetlb_cma_size, hugetlb_cma_base);
+ 	return 0;
+ }
+ 
+@@ -5169,12 +5177,19 @@ void __init hugetlb_cma_reserve(int order)
+ {
+ 	unsigned long size, reserved, per_node;
+ 	int nid;
++	bool fix = false;
+ 
+ 	cma_reserve_called = true;
+ 
+ 	if (!hugetlb_cma_size)
+ 		return;
+ 
++	if (hugetlb_cma_base)
++		fix = true;
++
++	/* We dont need 1G, reszie it, may have side-effect */
++	order = RK_HUGETLB_CMA_ORDER;
++
+ 	if (hugetlb_cma_size < (PAGE_SIZE << order)) {
+ 		pr_warn("hugetlb_cma: cma area should be at least %lu MiB\n",
+ 			(PAGE_SIZE << order) / SZ_1M);
+@@ -5196,8 +5211,8 @@ void __init hugetlb_cma_reserve(int order)
+ 		size = min(per_node, hugetlb_cma_size - reserved);
+ 		size = round_up(size, PAGE_SIZE << order);
+ 
+-		res = cma_declare_contiguous(0, size, 0, PAGE_SIZE << order,
+-						 0, false, "hugetlb",
++		res = cma_declare_contiguous(hugetlb_cma_base, size, 0, PAGE_SIZE << order,
++						 0, fix, "hugetlb",
+ 						 &hugetlb_cma[nid]);
+ 		if (res) {
+ 			pr_warn("hugetlb_cma: reservation failed: err %d, node %d",
+-- 
+2.25.1
+

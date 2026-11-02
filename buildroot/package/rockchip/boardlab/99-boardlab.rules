@@ -1,0 +1,22 @@
+# Optional udev rules for BoardLab board bring-up.
+# Review on the target image before installing.
+
+SUBSYSTEM=="backlight", MODE="0660", GROUP="video"
+KERNEL=="ttyS*", MODE="0660", GROUP="dialout"
+KERNEL=="ttyFIQ*", MODE="0660", GROUP="dialout"
+KERNEL=="ttyUSB*", MODE="0660", GROUP="dialout"
+KERNEL=="ttyACM*", MODE="0660", GROUP="dialout"
+KERNEL=="cdc-wdm*", MODE="0660", GROUP="dialout"
+KERNEL=="gpio*", SUBSYSTEM=="gpio", MODE="0660", GROUP="gpio"
+# The profile only exposes these board-owned LEDs. Use a group rather than
+# world-writable sysfs nodes so the desktop application can control them.
+SUBSYSTEM=="leds", KERNEL=="work", MODE="0660", GROUP="gpio", RUN+="/bin/chgrp gpio /sys%p/brightness", RUN+="/bin/chmod 0660 /sys%p/brightness"
+SUBSYSTEM=="leds", KERNEL=="work1", MODE="0660", GROUP="gpio", RUN+="/bin/chgrp gpio /sys%p/brightness", RUN+="/bin/chmod 0660 /sys%p/brightness"
+SUBSYSTEM=="leds", KERNEL=="work2", MODE="0660", GROUP="gpio", RUN+="/bin/chgrp gpio /sys%p/brightness", RUN+="/bin/chmod 0660 /sys%p/brightness"
+SUBSYSTEM=="leds", KERNEL=="user1", MODE="0660", GROUP="gpio", RUN+="/bin/chgrp gpio /sys%p/brightness", RUN+="/bin/chmod 0660 /sys%p/brightness"
+SUBSYSTEM=="leds", KERNEL=="user2", MODE="0660", GROUP="gpio", RUN+="/bin/chgrp gpio /sys%p/brightness", RUN+="/bin/chmod 0660 /sys%p/brightness"
+# The kernel pwm-beeper driver owns the underlying PWM. BoardLab only needs
+# write access to either exact kernel input name and never exports a PWM sysfs
+# channel. Both names are explicit aliases, not substring matches.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pwm-beeper", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="pwm beeper", MODE="0660", GROUP="input"

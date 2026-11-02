@@ -1,0 +1,1 @@
+SUBSYSTEM=="sound", KERNEL=="card*", ATTR{id}=="rockchipes8388", RUN+="/usr/local/sbin/topeet-es8388-audio"

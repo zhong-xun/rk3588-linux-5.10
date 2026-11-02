@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RKNetUpdate · Rockchip 固件控制台</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!--
+    Design assumptions:
+    1. Operators need the current action and power-safety state before raw device paths.
+    2. OTA tracking must stop at Recovery handoff instead of implying Web-visible offline progress.
+    3. The console is used at laptop distance and on a phone beside a serial terminal.
+  -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">RK</span>
+      <div>
+        <strong>RKNETUPDATE</strong>
+        <span>ROCKCHIP IMAGE CONTROL</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="headerConnection" class="connection-pill locked">
+        <i aria-hidden="true"></i><b id="headerConnectionText">需要 Token</b>
+      </span>
+      <span id="modeBadge" class="mode-badge">安全锁定</span>
+      <button id="changeTokenButton" class="token-button hidden" type="button">更换 Token</button>
+    </div>
+  </header>
+
+  <section id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <div class="auth-heading">
+        <span class="auth-mark" aria-hidden="true"><b>AUTH</b><i></i></span>
+        <div>
+          <span>PROTECTED MAINTENANCE PORTAL</span>
+          <h1 id="authTitle">设备升级控制台已锁定</h1>
+        </div>
+      </div>
+      <p class="auth-intro">请输入当前板卡配置的访问 Token。验证通过前，设备状态、镜像选择和分区写入功能均不可访问。</p>
+
+      <form id="authForm" class="auth-form" autocomplete="off" novalidate>
+        <label for="tokenInput">访问 Token</label>
+        <div class="token-field">
+          <input id="tokenInput" name="rknetupdate-token" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required aria-describedby="authMessage" placeholder="输入设备访问 Token">
+          <button id="toggleTokenButton" type="button" aria-label="显示 Token" aria-pressed="false">显示</button>
+        </div>
+        <p id="authMessage" class="auth-message" aria-live="assertive">Token 仅保存在当前页面内存中，刷新页面后需要重新验证。</p>
+        <button id="authSubmit" class="auth-submit" type="submit">
+          <span>验证并进入控制台</span><b aria-hidden="true">ENTER</b>
+        </button>
+      </form>
+
+      <dl class="auth-facts">
+        <div><dt>认证保护</dt><dd>设备信息、任务状态、镜像上传与烧写接口</dd></div>
+        <div><dt>客户配置</dt><dd><code>/etc/rknetupdate.conf</code> 中的 <code>token=</code></dd></div>
+      </dl>
+    </div>
+    <aside class="auth-guardrail" aria-label="安全提示">
+      <span>SECURITY BOUNDARY</span>
+      <strong>未认证请求将由设备端拒绝</strong>
+      <p>Token 不会写入 localStorage、sessionStorage 或 URL。完成维护后可使用顶部“更换 Token”立即锁定页面。</p>
+    </aside>
+  </section>
+
+  <main id="consoleMain" hidden>
+    <section class="machine-strip" aria-label="设备状态">
+      <div class="machine-identity">
+        <span class="status-light" id="statusLight" role="img" aria-label="设备连接中"></span>
+        <div>
+          <span>目标设备 / TARGET</span>
+          <strong id="hostname">等待连接</strong>
+        </div>
+      </div>
+      <dl>
+        <div><dt>硬件型号</dt><dd id="model">--</dd></div>
+        <div><dt>运行系统</dt><dd id="osName">--</dd></div>
+        <div><dt>服务架构</dt><dd id="runtime">--</dd></div>
+        <div><dt>当前状态</dt><dd id="machineState" aria-live="polite">未连接</dd></div>
+      </dl>
+    </section>
+
+    <div class="workspace">
+      <section class="control-panel" data-target="uboot">
+        <div class="section-heading">
+          <div><span class="section-index">01</span><h1>选择升级目标</h1></div>
+          <span id="targetAvailability" class="availability">检查中</span>
+        </div>
+
+        <div class="target-switch" role="radiogroup" aria-label="升级目标">
+          <label class="target-option" data-target="uboot">
+            <input type="radio" name="target" value="uboot" checked>
+            <span><b>U-Boot</b><small>uboot.img · 直接写入</small></span>
+          </label>
+          <label class="target-option" data-target="boot">
+            <input type="radio" name="target" value="boot">
+            <span><b>Boot</b><small>boot.img · 直接写入</small></span>
+          </label>
+          <label class="target-option" data-target="rootfs">
+            <input type="radio" name="target" value="rootfs">
+            <span><b>Rootfs</b><small>rootfs.img · Recovery</small></span>
+          </label>
+          <label class="target-option system-target" data-target="updateimg">
+            <input type="radio" name="target" value="updateimg">
+            <span><b>完整系统 OTA</b><small>update.img · 全分区包</small></span>
+          </label>
+        </div>
+
+        <section id="workflowBrief" class="workflow-brief" aria-live="polite">
+          <div class="workflow-code" id="workflowCode">BL</div>
+          <div class="workflow-copy">
+            <span id="workflowKicker">BOOT CHAIN / DIRECT</span>
+            <strong id="workflowTitle">U-Boot 引导升级</strong>
+            <p id="workflowDescription">在线写入引导分区，并按镜像长度完成 SHA-256 回读。</p>
+            <div id="workflowTags" class="workflow-tags"></div>
+          </div>
+        </section>
+
+        <details class="technical-disclosure">
+          <summary>
+            <span>设备与分区映射</span>
+            <small>展开诊断信息</small>
+          </summary>
+          <div class="target-facts">
+            <div><span>配置映射</span><code id="devicePath">--</code></div>
+            <div><span>实际分区</span><code id="resolvedPath">--</code></div>
+            <div><span>父磁盘</span><code id="parentDevice">--</code></div>
+            <div><span>预期父盘</span><code id="expectedParent">--</code></div>
+            <div><span id="deviceSizeLabel">分区容量</span><strong id="deviceSize">--</strong></div>
+            <div><span>上传上限</span><strong id="uploadLimit">--</strong></div>
+          </div>
+        </details>
+
+        <div class="section-heading upload-heading">
+          <div><span class="section-index">02</span><h2>载入升级镜像</h2></div>
+        </div>
+
+        <label id="dropzone" class="dropzone">
+          <input id="imageInput" type="file" accept=".img,application/octet-stream">
+          <span class="file-symbol" aria-hidden="true"><b>IMG</b><i></i></span>
+          <strong id="dropTitle">选择 uboot.img</strong>
+          <small id="dropMeta">仅接受当前目标对应的镜像文件</small>
+          <span class="drop-action">浏览文件或拖放至此</span>
+        </label>
+
+        <div id="uploadProgress" class="progress-block hidden" aria-live="polite">
+          <div><span>上传到设备</span><strong id="uploadPercent">0%</strong></div>
+          <progress id="uploadBar" max="100" value="0" aria-label="镜像上传进度"></progress>
+        </div>
+
+        <aside id="safetyNote" class="safety-note">
+          <span class="safety-index" aria-hidden="true">!</span>
+          <div><strong id="safetyTitle">写入前检查</strong><p id="safetyText">请确认镜像来自当前硬件版本，并保持电源稳定。</p></div>
+        </aside>
+
+        <button id="uploadButton" class="primary-button" type="button" disabled>上传并开始升级</button>
+      </section>
+
+      <section class="telemetry-panel">
+        <div class="section-heading">
+          <div><span class="section-index">03</span><h2>升级任务</h2></div>
+          <span id="jobStatus" class="job-status idle" aria-live="polite">空闲</span>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+          <div class="standby-mark" aria-hidden="true"><span id="standbyLabel">STANDBY</span><i></i></div>
+          <strong id="emptyTitle">等待升级任务</strong>
+          <p id="emptyDescription">选择左侧目标并载入镜像。任务启动后，这里将显示校验结果、阶段轨道和安全提示。</p>
+          <ol id="emptySequence" class="empty-sequence" aria-label="升级流程预览">
+            <li>上传</li><li>校验</li><li>写入</li><li>回读</li>
+          </ol>
+        </div>
+
+        <div id="jobView" class="job-view hidden">
+          <section id="missionBanner" class="mission-banner" aria-live="polite">
+            <div class="mission-code" id="missionCode">JOB</div>
+            <div class="mission-copy">
+              <span id="missionKicker">UPGRADE MISSION</span>
+              <h3 id="missionTitle">正在准备升级</h3>
+              <p id="missionMessage">设备正在校验升级请求。</p>
+            </div>
+            <div class="mission-actions">
+              <span id="connectionBadge" class="link-state online">设备在线</span>
+            </div>
+          </section>
+
+          <aside id="powerWarning" class="power-warning hidden" role="status">
+            <strong>升级执行中 · 禁止断电</strong>
+            <span>不要拔除电源、eMMC 或网线。Recovery 阶段网页可能暂时离线，这是预期行为。</span>
+          </aside>
+
+          <section id="stageBlock" class="stage-block" aria-labelledby="stageTitle">
+            <div class="stage-heading">
+              <div><span>WORKFLOW</span><h3 id="stageTitle">升级流程</h3></div>
+              <strong id="stageCounter">阶段 0 / 0</strong>
+            </div>
+            <ol id="stageRail" class="stage-rail"></ol>
+            <aside id="serialNotice" class="serial-notice hidden" role="note" aria-live="polite">
+              <span aria-hidden="true">SERIAL</span>
+              <div>
+                <strong id="serialNoticeTitle">Recovery 后续仅能通过串口确认</strong>
+                <p id="serialNoticeText">进入 Recovery 后 Web 停止阶段跟踪，分区写入、镜像校验、收尾清理和重启结果仅以串口为准。</p>
+              </div>
+            </aside>
+            <div id="flashProgress" class="flash-progress">
+              <div><span id="progressLabel">等待任务</span><strong id="flashPercent">0%</strong></div>
+              <progress id="flashBar" max="100" value="0" aria-labelledby="progressLabel"></progress>
+              <p id="progressHint">任务启动后显示流程进度。</p>
+            </div>
+          </section>
+
+          <section class="package-card">
+            <div class="job-headline">
+              <div><span id="jobTarget">--</span><strong id="jobFilename">--</strong></div>
+              <b id="jobSize">--</b>
+            </div>
+            <div class="hash-block">
+              <span>PACKAGE SHA-256</span>
+              <code id="jobHash">--</code>
+            </div>
+            <div id="payloadBlock" class="payload-block hidden">
+              <div><span>已验证的包内容</span><b id="payloadCount">0 ITEMS</b></div>
+              <ul id="payloadList"></ul>
+            </div>
+            <div id="artifactBlock" class="artifact-block hidden">
+              <span>组合镜像</span>
+              <ol id="artifactList"></ol>
+            </div>
+            <div class="validation-panel">
+              <span>格式与兼容性检查</span>
+              <strong id="validationTitle">等待检查</strong>
+              <p id="jobValidation">--</p>
+            </div>
+          </section>
+
+          <details class="technical-disclosure job-diagnostics">
+            <summary>
+              <span>任务诊断详情</span>
+              <small>分区、阶段与回读哈希</small>
+            </summary>
+            <dl class="job-details">
+              <div><dt>配置映射</dt><dd id="jobDevice">--</dd></div>
+              <div><dt>实际分区</dt><dd id="jobResolvedDevice">--</dd></div>
+              <div><dt>父磁盘</dt><dd id="jobParentDevice">--</dd></div>
+              <div><dt>Recovery 阶段</dt><dd id="recoveryPhase">--</dd></div>
+              <div><dt>回读校验</dt><dd id="readbackHash">--</dd></div>
+            </dl>
+          </details>
+
+          <div id="jobError" class="error-box hidden" role="alert"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="event-log">
+      <div class="section-heading compact">
+        <div><span class="section-index">04</span><h2>事件记录</h2></div>
+        <button id="clearLogButton" class="text-button" type="button">清空记录</button>
+      </div>
+      <ol id="eventList" aria-live="polite"><li><time>--:--:--</time><span>控制台已就绪</span></li></ol>
+    </section>
+  </main>
+
+  <section id="rebootDialog" class="reboot-dialog" role="dialog" aria-modal="true" aria-labelledby="rebootDialogTitle" aria-describedby="rebootDialogDescription" hidden>
+    <div id="rebootCard" class="reboot-card" tabindex="-1">
+      <div class="reboot-heading">
+        <span class="reboot-mark" aria-hidden="true"><b>PWR</b><i></i></span>
+        <div>
+          <span>DIRECT FLASH COMPLETE</span>
+          <h2 id="rebootDialogTitle">分区写入与回读校验完成</h2>
+        </div>
+      </div>
+      <p id="rebootDialogDescription" class="reboot-description">新镜像已经安全写入，需要重新启动设备后生效。</p>
+
+      <dl class="reboot-proof">
+        <div><dt>已完成目标</dt><dd id="rebootTarget">--</dd></div>
+        <div><dt>回读 SHA-256</dt><dd><code id="rebootHash">--</code></dd></div>
+      </dl>
+
+      <aside class="reboot-warning">
+        <span aria-hidden="true">!</span>
+        <p><strong>重启会暂时中断网页和网络连接</strong>请先保存其他终端中的工作；设备重新上线前不要断电。</p>
+      </aside>
+
+      <p id="rebootDialogStatus" class="reboot-dialog-status" aria-live="polite">当前设备仍保持在线，可选择稍后手动重启。</p>
+      <div class="reboot-actions">
+        <button id="rebootLaterButton" class="reboot-secondary" type="button">稍后重启</button>
+        <button id="rebootNowButton" class="reboot-primary" type="button">立即重启设备</button>
+        <button id="rebootDoneButton" class="reboot-primary hidden" type="button">返回升级控制台</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

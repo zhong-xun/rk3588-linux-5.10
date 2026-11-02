@@ -1,0 +1,94 @@
+#!/bin/sh
+set -eu
+
+# Select the Quectel connection manager that matches the USB modem currently
+# attached to the board.  EM05 requires V1.6.2, while EC200A and RM500U use
+# V1.6.8.  Pass every caller argument through unchanged to the selected tool.
+
+command -v lsusb >/dev/null 2>&1 || {
+    echo "未找到 lsusb，无法识别 4G/5G 模块" >&2
+    exit 1
+}
+
+if ! usb_devices=$(lsusb); then
+    echo "执行 lsusb 失败，无法识别 4G/5G 模块" >&2
+    exit 1
+fi
+
+# The three vendor dialers are not interchangeable. Select only from the
+# verified Quectel VID:PID list; never promote a similarly named product
+# string from a different or unsupported USB PID.
+selection_lines=$(printf '%s\n' "$usb_devices" | awk '
+function kind_for_pid(id) {
+    if (id == "2c7c:030a" || id == "2c7c:030c" || id == "2c7c:030e" \
+        || id == "2c7c:0310" || id == "2c7c:0311" || id == "2c7c:0312" \
+        || id == "2c7c:0313" || id == "2c7c:0314") return "EM05"
+    if (id == "2c7c:6005") return "EC200A"
+    if (id == "2c7c:0900") return "RM500U"
+    return ""
+}
+{
+    id = ""
+    for (field = 1; field <= NF; ++field) {
+        if ($field == "ID" && field < NF) {
+            id = tolower($(field + 1))
+            break
+        }
+    }
+    if (id !~ /^2c7c:/) next
+
+    kind = kind_for_pid(id)
+    if (kind == "") next
+
+    product = tolower($0)
+    product_kind = ""
+    product_matches = 0
+    if (index(product, "em05") > 0) { product_kind = "EM05"; ++product_matches }
+    if (index(product, "ec200a") > 0) { product_kind = "EC200A"; ++product_matches }
+    if (index(product, "rm500u") > 0) { product_kind = "RM500U"; ++product_matches }
+    if (product_matches > 1 || (product_matches == 1 && product_kind != kind)) {
+        print "conflict " id " " kind
+        next
+    }
+    print "candidate " kind " " id
+}')
+
+conflict_count=$(printf '%s\n' "$selection_lines" | awk '$1 == "conflict" { ++count } END { print count + 0 }')
+candidate_count=$(printf '%s\n' "$selection_lines" | awk '$1 == "candidate" { ++count } END { print count + 0 }')
+
+if [ "$conflict_count" -gt 0 ]; then
+    echo "USB PID 与产品名称冲突，拒绝选择 4G/5G 拨号程序" >&2
+    exit 1
+fi
+
+case "$candidate_count" in
+    1)
+        module=$(printf '%s\n' "$selection_lines" | awk '$1 == "candidate" { print $2; exit }')
+        case "$module" in
+            EM05) dialer=quectel-CM-V1.6.2-EM05 ;;
+            EC200A|RM500U) dialer=quectel-CM-V1.6.8 ;;
+            *)
+                echo "内部模块映射错误: $module" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    0)
+        echo "未在 lsusb 输出中识别到受支持的 EM05、EC200A 或 RM500U 模块" >&2
+        exit 1
+        ;;
+    *)
+        echo "同时识别到多个受支持的 4G/5G 模块，请仅保留一个模块后再拨号" >&2
+        exit 1
+        ;;
+esac
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+program="$script_dir/$dialer"
+[ -x "$program" ] || {
+    echo "匹配的拨号程序不可执行: $program" >&2
+    exit 1
+}
+
+echo "检测到 $module，使用 $dialer 拨号"
+exec "$program" "$@"

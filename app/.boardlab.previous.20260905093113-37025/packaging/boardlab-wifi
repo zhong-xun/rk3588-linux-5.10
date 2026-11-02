@@ -1,0 +1,131 @@
+#!/usr/bin/env sh
+# Restricted root-side NetworkManager broker for BoardLab.
+#
+# This is not a general command wrapper. The sudo policy grants access only
+# to this root-owned file, and this parser accepts exactly the nmcli forms
+# issued by WifiManager. It never evaluates caller input.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+NMCLI=/usr/bin/nmcli
+if [ ! -x "$NMCLI" ] && [ -x /bin/nmcli ]; then
+    NMCLI=/bin/nmcli
+fi
+SYS_CLASS_NET=/sys/class/net
+
+deny() {
+    printf '%s\n' 'Topeet development-board test platform Wi-Fi helper: request denied.' >&2
+    exit 64
+}
+
+[ -x "$NMCLI" ] || {
+    printf '%s\n' 'Topeet development-board test platform Wi-Fi helper: nmcli is unavailable.' >&2
+    exit 69
+}
+
+valid_interface() {
+    value=$1
+    [ -n "$value" ] || return 1
+    [ "${#value}" -le 63 ] || return 1
+    printf '%s\n' "$value" | LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,62}$'
+}
+
+valid_wifi_interface() {
+    value=$1
+    valid_interface "$value" || return 1
+    [ -d "$SYS_CLASS_NET/$value/wireless" ]
+}
+
+valid_bssid() {
+    printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$'
+}
+
+valid_text() {
+    value=$1
+    maximum=$2
+    [ -n "$value" ] || return 1
+    byte_count=$(printf '%s' "$value" | LC_ALL=C wc -c | tr -d '[:space:]')
+    [ "$byte_count" -le "$maximum" ] || return 1
+    if printf '%s' "$value" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+        return 1
+    fi
+    return 0
+}
+
+password_from_stdin=0
+password=
+if [ "${1:-}" = "--password-stdin" ]; then
+    [ "${2:-}" = "--" ] || deny
+    shift 2
+    # Read one byte past the supported limit, never an unbounded caller
+    # stream. The sentinel preserves a trailing newline through command
+    # substitution so valid_text can reject every control character.
+    password=$( (dd bs=1 count=257 2>/dev/null; printf x) )
+    password=${password%x}
+    valid_text "$password" 256 || deny
+    password_from_stdin=1
+fi
+
+# Read-only radio state.
+if [ "$#" -eq 5 ] && [ "$1" = "-t" ] && [ "$2" = "-e" ] && [ "$3" = "yes" ] && \
+        [ "$4" = "radio" ] && [ "$5" = "wifi" ] && [ "$password_from_stdin" -eq 0 ]; then
+    exec "$NMCLI" "$@"
+fi
+
+# Read-only managed Wi-Fi device state.
+if [ "$#" -eq 7 ] && [ "$1" = "-t" ] && [ "$2" = "-e" ] && [ "$3" = "yes" ] && \
+        [ "$4" = "-f" ] && [ "$5" = "DEVICE,TYPE,STATE,CONNECTION" ] && \
+        [ "$6" = "device" ] && [ "$7" = "status" ] && [ "$password_from_stdin" -eq 0 ]; then
+    exec "$NMCLI" "$@"
+fi
+
+# Read-only IPv4 assignment for one physical Wi-Fi interface.  This is kept
+# separate from `device status` so BoardLab can publish the address received
+# after a successful connection without granting a general nmcli wrapper.
+if [ "$#" -eq 8 ] && [ "$1" = "-t" ] && [ "$2" = "-e" ] && [ "$3" = "yes" ] && \
+        [ "$4" = "-f" ] && [ "$5" = "IP4.ADDRESS" ] && \
+        [ "$6" = "device" ] && [ "$7" = "show" ] && valid_wifi_interface "$8" && \
+        [ "$password_from_stdin" -eq 0 ]; then
+    exec "$NMCLI" "$@"
+fi
+
+# Explicit scan of one physical Wi-Fi interface.
+if [ "$#" -eq 7 ] && [ "$1" = "-w" ] && [ "$2" = "15" ] && \
+        [ "$3" = "device" ] && [ "$4" = "wifi" ] && [ "$5" = "rescan" ] && \
+        [ "$6" = "ifname" ] && valid_wifi_interface "$7" && [ "$password_from_stdin" -eq 0 ]; then
+    exec "$NMCLI" "$@"
+fi
+
+# Cached access-point list for one validated interface. Do not allow nmcli to
+# rescan implicitly because the UI records an explicit user scan first.
+if [ "$#" -eq 12 ] && [ "$1" = "-t" ] && [ "$2" = "-e" ] && [ "$3" = "yes" ] && \
+        [ "$4" = "-f" ] && [ "$5" = "IN-USE,SSID,BSSID,MODE,CHAN,FREQ,RATE,SIGNAL,SECURITY" ] && \
+        [ "$6" = "device" ] && [ "$7" = "wifi" ] && [ "$8" = "list" ] && \
+        [ "$9" = "ifname" ] && valid_wifi_interface "${10}" && [ "${11}" = "--rescan" ] && \
+        [ "${12}" = "no" ] && [ "$password_from_stdin" -eq 0 ]; then
+    exec "$NMCLI" "$@"
+fi
+
+# Connect only to a specific BSSID selected from BoardLab's current scan
+# cache. Passwords are received on stdin and handed to nmcli's --ask mode,
+# never placed in the nmcli argument vector.
+if [ "$#" -eq 10 ] && [ "$1" = "-w" ] && [ "$2" = "30" ] && \
+        [ "$3" = "device" ] && [ "$4" = "wifi" ] && [ "$5" = "connect" ] && \
+        valid_text "$6" 32 && [ "$7" = "bssid" ] && valid_bssid "$8" && \
+        [ "$9" = "ifname" ] && valid_wifi_interface "${10}"; then
+    if [ "$password_from_stdin" -eq 1 ]; then
+        printf '%s\n' "$password" | "$NMCLI" --ask -w 30 device wifi connect "$6" bssid "$8" ifname "${10}"
+        exit $?
+    fi
+    exec "$NMCLI" "$@"
+fi
+
+# Disconnect only one physical Wi-Fi interface.
+if [ "$#" -eq 5 ] && [ "$1" = "-w" ] && [ "$2" = "20" ] && \
+        [ "$3" = "device" ] && [ "$4" = "disconnect" ] && valid_wifi_interface "$5" && \
+        [ "$password_from_stdin" -eq 0 ]; then
+    exec "$NMCLI" "$@"
+fi
+
+deny

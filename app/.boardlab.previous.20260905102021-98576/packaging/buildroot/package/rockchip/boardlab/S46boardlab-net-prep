@@ -1,0 +1,107 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          boardlab-net-prep
+# Required-Start:    mountvirtfs
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:
+# Short-Description: Prepare Wi-Fi ownership for BoardLab/NetworkManager
+### END INIT INFO
+
+# BusyBox ash compatible. Buildroot product images only — never rewrite Ubuntu/Debian.
+# Does not delete NetworkManager Wi-Fi connections or user profiles.
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+is_buildroot_product() {
+	if [ -f /etc/os-release ]; then
+		# shellcheck disable=SC1091
+		. /etc/os-release
+		if [ "${ID:-}" = "buildroot" ]; then
+			return 0
+		fi
+	fi
+	# Rockchip SysV product images ship NetworkManager as S45network-manager
+	# and do not use systemd as PID 1.
+	if [ -x /etc/init.d/S45network-manager ] && [ ! -d /run/systemd/system ]; then
+		return 0
+	fi
+	return 1
+}
+
+disable_ifupdown_manual_wifi() {
+	iface="$1"
+	snippet="/etc/network/interfaces.d/${iface}"
+	disabled="/etc/network/interfaces.d/${iface}.disabled-boardlab"
+	[ -f "$snippet" ] || return 0
+	# Only rename the Rockchip-style manual claim so hand-edited stanzas stay put.
+	if grep -Eq "^[[:space:]]*iface[[:space:]]+${iface}[[:space:]]+inet[[:space:]]+manual([[:space:]]|$)" "$snippet"; then
+		if [ ! -e "$disabled" ]; then
+			mv "$snippet" "$disabled" 2>/dev/null || true
+		fi
+	fi
+}
+
+ensure_dhcpcd_deny() {
+	conf=/etc/dhcpcd.conf
+	[ -f "$conf" ] || return 0
+
+	# Already denying both wireless interfaces.
+	if grep -Eq '^[[:space:]]*denyinterfaces[[:space:]].*(^|[[:space:]])wlan0([[:space:]]|$)' "$conf" \
+		&& grep -Eq '^[[:space:]]*denyinterfaces[[:space:]].*(^|[[:space:]])p2p0([[:space:]]|$)' "$conf"; then
+		return 0
+	fi
+
+	if grep -Eq '^[[:space:]]*denyinterfaces[[:space:]]' "$conf"; then
+		tmp="${conf}.boardlab.tmp"
+		awk '
+			BEGIN { done=0 }
+			/^[[:space:]]*denyinterfaces[[:space:]]/ && done==0 {
+				line=$0
+				if (line !~ /(^|[[:space:]])wlan0([[:space:]]|$)/) line=line " wlan0"
+				if (line !~ /(^|[[:space:]])p2p0([[:space:]]|$)/) line=line " p2p0"
+				print line
+				done=1
+				next
+			}
+			{ print }
+			END {
+				if (done==0) print "denyinterfaces wlan0 p2p0"
+			}
+		' "$conf" >"$tmp" && mv "$tmp" "$conf"
+		return 0
+	fi
+
+	printf '\n# BoardLab: leave Wi-Fi to NetworkManager\ndenyinterfaces wlan0 p2p0\n' >>"$conf"
+}
+
+start() {
+	if ! is_buildroot_product; then
+		return 0
+	fi
+	echo -n "Preparing BoardLab Wi-Fi ownership: "
+	disable_ifupdown_manual_wifi wlan0
+	disable_ifupdown_manual_wifi p2p0
+	ensure_dhcpcd_deny
+	if [ -d /etc/NetworkManager ] || [ -x /usr/sbin/NetworkManager ] || [ -x /usr/bin/NetworkManager ]; then
+		mkdir -p /etc/NetworkManager/conf.d
+	fi
+	echo "OK"
+}
+
+case "${1:-start}" in
+	start)
+		start
+		;;
+	stop)
+		;;
+	restart|reload)
+		start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac
+
+exit 0

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">迅为开发板测试平台</title>
+  <desc id="description">BoardLab 信号工作台桌面应用图标</desc>
+
+  <!-- V2 Signal Workbench: an instrument face carrying the Lucide circuit-board mark. -->
+  <rect x="28" y="28" width="456" height="456" rx="108" fill="#111612"/>
+  <rect x="44" y="44" width="424" height="424" rx="92" fill="none" stroke="#3B483F" stroke-width="8"/>
+
+  <rect x="112" y="112" width="288" height="288" rx="68" fill="#F9FCF8"/>
+  <rect x="112" y="112" width="288" height="288" rx="68" fill="none" stroke="#D3DCD4" stroke-width="8"/>
+
+  <g fill="none" stroke="#18231B" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="154" y="154" width="204" height="204" rx="28"/>
+    <path d="M238 218h46c18 0 32-14 32-32v-32"/>
+    <path d="M196 358v-46c0-18 14-32 32-32h46"/>
+  </g>
+
+  <g fill="#F9FCF8" stroke="#2C865D" stroke-width="20">
+    <circle cx="214" cy="218" r="24"/>
+    <circle cx="294" cy="294" r="24"/>
+  </g>
+
+  <g fill="none" stroke="#2C865D" stroke-width="16" stroke-linecap="round">
+    <path d="M92 194h62"/>
+    <path d="M92 256h62"/>
+    <path d="M92 318h62"/>
+    <path d="M358 218h62"/>
+    <path d="M358 294h62"/>
+    <path d="M358 356h30"/>
+  </g>
+  <g fill="#2C865D">
+    <circle cx="76" cy="194" r="12"/>
+    <circle cx="76" cy="256" r="12"/>
+    <circle cx="76" cy="318" r="12"/>
+    <circle cx="436" cy="218" r="12"/>
+    <circle cx="436" cy="294" r="12"/>
+  </g>
+
+</svg>

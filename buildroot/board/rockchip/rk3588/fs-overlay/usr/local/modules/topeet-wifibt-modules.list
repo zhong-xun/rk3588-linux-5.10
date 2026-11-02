@@ -1,0 +1,5 @@
+# Only modules listed here are refreshed from kernel build outputs.
+8723du.ko
+aic8800_fdrv.ko
+aic_load_fw.ko
+rtk_btusb.ko

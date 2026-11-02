@@ -1,0 +1,455 @@
+#!/bin/sh
+
+# Always send helper phases and byte-progress to the recovery serial console.
+# Init implementations differ on where an rc script's inherited stdout lands.
+if [ -c /dev/console ] && [ -w /dev/console ]; then
+	exec >/dev/console 2>&1
+fi
+
+HELPER=${RKNETUPDATE_HELPER_PATH:-/usr/bin/rknetupdate-recovery}
+REQUEST=${RKNETUPDATE_REQUEST_PATH:-/userdata/rootfs.apply}
+SUPPRESS_STOCK=${RKNETUPDATE_SUPPRESS_PATH:-/run/rknetupdate-stock-recovery-suppressed}
+STOCK_READY=${RKNETUPDATE_STOCK_READY_PATH:-/run/rknetupdate-stock-update-ready}
+USERDATA=${RKNETUPDATE_USERDATA_PATH:-/dev/disk/by-partlabel/userdata}
+MISC_CONFIGURED=${RKNETUPDATE_MISC_PATH:-/dev/disk/by-partlabel/misc}
+MISC="$MISC_CONFIGURED"
+MISC_PINNED=
+MISC_PINNED_START=
+MISC_PINNED_SIZE=
+CMDLINE_PATH=${RKNETUPDATE_CMDLINE_PATH:-/proc/cmdline}
+ROCKCHIP_SD_EXPECTED=${RKNETUPDATE_SD_EXPECTED_PATH:-/run/rknetupdate-rockchip-sd.expected}
+ROCKCHIP_SD_ACTUAL=${RKNETUPDATE_SD_ACTUAL_PATH:-/run/rknetupdate-rockchip-sd.actual}
+SMOKE_EXPECTED=/run/rknetupdate-smoke-bcb.expected
+SMOKE_ACTUAL=/run/rknetupdate-smoke-bcb.actual
+ROOTFS_BCB=/run/rknetupdate-rootfs-v2.bcb
+BUNDLE_BCB=/run/rknetupdate-bundle-v1.bcb
+UPDATEIMG_BCB=/run/rknetupdate-updateimg-v1.bcb
+UPDATEIMG_STOCK_EXPECTED=/run/rknetupdate-updateimg-stock.expected
+UPDATEIMG_STOCK_ACTUAL=/run/rknetupdate-updateimg-stock.actual
+UPDATEIMG_STATE=/userdata/rknetupdate/updateimg-v1/state.json
+UPDATEIMG_MANIFEST=/userdata/rknetupdate/updateimg-v1/updateimg.manifest.json
+UPDATEIMG_STAGED_PACKAGE=/userdata/rknetupdate/updateimg-v1/update.img
+UPDATEIMG_PACKAGE=/userdata/update.img
+DEVICE_WAIT_SECONDS=${RKNETUPDATE_DEVICE_WAIT_SECONDS:-120}
+
+log()
+{
+	echo "rknetupdate: $*"
+}
+
+# Rockchip's SD-card path is owned by the stock recovery.  Detect it before
+# waiting for misc or mounting userdata: those operations are unnecessary for
+# a TF boot and can delay or suppress the vendor updater.
+rockchip_sd_boot_requested()
+{
+	if [ -r "$CMDLINE_PATH" ]; then
+		CMDLINE="$(tr '\n' ' ' < "$CMDLINE_PATH" 2>/dev/null || true)"
+		case " $CMDLINE " in
+			*" sdfwupdate "*)
+				return 0
+				;;
+		esac
+	fi
+
+	# Some vendor boot flows arrive in recovery from the Rockchip BCB without
+	# retaining the cmdline token. Match the complete command/status/recovery/
+	# needupdate region at misc+16 KiB; a substring search could mistake a
+	# private request or systemFlag for a TF upgrade request.
+	rockchip_sd_bcb_requested
+}
+
+rockchip_sd_bcb_requested()
+{
+	[ -e "$MISC" ] || return 1
+	rm -f "$ROCKCHIP_SD_EXPECTED" "$ROCKCHIP_SD_ACTUAL"
+	dd if=/dev/zero of="$ROCKCHIP_SD_EXPECTED" bs=836 count=1 2>/dev/null || return 1
+	printf '%s' 'boot-recovery' | \
+		dd of="$ROCKCHIP_SD_EXPECTED" bs=1 seek=0 conv=notrunc 2>/dev/null || return 1
+	printf 'recovery\n--rk_fwupdate\n' | \
+		dd of="$ROCKCHIP_SD_EXPECTED" bs=1 seek=64 conv=notrunc 2>/dev/null || return 1
+	dd if="$MISC" of="$ROCKCHIP_SD_ACTUAL" bs=1 skip=16384 count=836 2>/dev/null || {
+		rm -f "$ROCKCHIP_SD_EXPECTED" "$ROCKCHIP_SD_ACTUAL"
+		return 1
+	}
+
+	result=1
+	if cmp -s "$ROCKCHIP_SD_EXPECTED" "$ROCKCHIP_SD_ACTUAL"; then
+		result=0
+	fi
+	rm -f "$ROCKCHIP_SD_EXPECTED" "$ROCKCHIP_SD_ACTUAL"
+	return "$result"
+}
+
+reboot_to_normal_system()
+{
+	log "syncing storage and rebooting to the normal system"
+	sync
+	sleep 1
+	# The helper normally calls the reboot syscall itself.  These are fallbacks
+	# for an older helper image. A command returning here did not reboot, so do
+	# not accidentally report success and leave the board in recovery.
+	if [ -x /bin/busybox ]; then
+		/bin/busybox reboot -f || log "BusyBox reboot command failed"
+	fi
+	if [ -x /sbin/reboot ]; then
+		/sbin/reboot -f || log "/sbin/reboot command failed"
+	fi
+	log "normal reboot command returned; staying in recovery rescue mode"
+	return 1
+}
+
+wait_for_misc()
+{
+	i=0
+	while ! resolve_misc && [ "$i" -lt "$DEVICE_WAIT_SECONDS" ]; do
+		i=$((i + 1))
+		if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
+			log "waiting for misc partition ($i/$DEVICE_WAIT_SECONDS seconds)"
+		fi
+		if [ -x /usr/bin/udevadm ]; then
+			/usr/bin/udevadm settle --timeout=2 >/dev/null 2>&1 || true
+		fi
+		sleep 1
+	done
+	resolve_misc
+}
+
+resolve_misc()
+{
+	# Test and explicitly overridden paths keep their existing behavior. The
+	# production path is pinned to the validated eMMC p2 device so a transient
+	# udev PARTLABEL unlink during partprobe cannot break the same recovery run.
+	if [ "$MISC_CONFIGURED" != /dev/disk/by-partlabel/misc ]; then
+		[ -e "$MISC_CONFIGURED" ] || return 1
+		MISC="$MISC_CONFIGURED"
+		return 0
+	fi
+
+	candidate="$(readlink -f "$MISC_CONFIGURED" 2>/dev/null || true)"
+	[ -n "$candidate" ] || candidate="$MISC_PINNED"
+	[ "$candidate" = /dev/mmcblk0p2 ] || return 1
+	[ -b "$candidate" ] || return 1
+	sysfs="$(readlink -f "/sys/class/block/${candidate##*/}" 2>/dev/null || true)"
+	[ -n "$sysfs" ] || return 1
+	[ "$(basename "$(dirname "$sysfs")")" = mmcblk0 ] || return 1
+	[ "$(cat "$sysfs/partition" 2>/dev/null || true)" = 2 ] || return 1
+	partname="$(sed -n 's/^PARTNAME=//p' "$sysfs/uevent" 2>/dev/null)"
+	[ "$partname" = misc ] || return 1
+	start="$(cat "$sysfs/start" 2>/dev/null || true)"
+	size="$(cat "$sysfs/size" 2>/dev/null || true)"
+	case "$start:$size" in
+		*[!0-9:]*|:*|*:) return 1 ;;
+	esac
+	[ "$size" -gt 0 ] || return 1
+	if [ -n "$MISC_PINNED" ]; then
+		[ "$candidate" = "$MISC_PINNED" ] || return 1
+		[ "$start" = "$MISC_PINNED_START" ] || return 1
+		[ "$size" = "$MISC_PINNED_SIZE" ] || return 1
+	else
+		MISC_PINNED="$candidate"
+		MISC_PINNED_START="$start"
+		MISC_PINNED_SIZE="$size"
+	fi
+	MISC="$candidate"
+	return 0
+}
+
+userdata_mounted()
+{
+	awk '$2 == "/userdata" { found = 1 } END { exit !found }' /proc/mounts
+}
+
+mount_userdata()
+{
+	userdata_mounted && return 0
+	mkdir -p /userdata
+
+	i=0
+	while [ ! -e "$USERDATA" ] && [ "$i" -lt "$DEVICE_WAIT_SECONDS" ]; do
+		i=$((i + 1))
+		if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
+			log "waiting for userdata partition ($i/$DEVICE_WAIT_SECONDS seconds)"
+		fi
+		sleep 1
+	done
+	[ -e "$USERDATA" ] || return 1
+	mount -t ext4 "$USERDATA" /userdata
+}
+
+stock_updateimg_requested()
+{
+	wait_for_misc || return 1
+	rm -f "$UPDATEIMG_STOCK_EXPECTED" "$UPDATEIMG_STOCK_ACTUAL"
+
+	# Match the exact canonical Rockchip update-package BCB fields while leaving
+	# systemFlag outside the comparison window.
+	dd if=/dev/zero of="$UPDATEIMG_STOCK_EXPECTED" bs=836 count=1 2>/dev/null || return 1
+	printf '%s' 'boot-recovery' | \
+		dd of="$UPDATEIMG_STOCK_EXPECTED" bs=1 seek=0 conv=notrunc 2>/dev/null || return 1
+	printf 'recovery\n--update_package=/userdata/update.img\n' | \
+		dd of="$UPDATEIMG_STOCK_EXPECTED" bs=1 seek=64 conv=notrunc 2>/dev/null || return 1
+	printf '\000\000\273\000' | \
+		dd of="$UPDATEIMG_STOCK_EXPECTED" bs=1 seek=832 conv=notrunc 2>/dev/null || return 1
+	dd if="$MISC" of="$UPDATEIMG_STOCK_ACTUAL" bs=1 skip=16384 count=836 2>/dev/null || return 1
+
+	if cmp -s "$UPDATEIMG_STOCK_EXPECTED" "$UPDATEIMG_STOCK_ACTUAL"; then
+		rm -f "$UPDATEIMG_STOCK_EXPECTED" "$UPDATEIMG_STOCK_ACTUAL"
+		return 0
+	fi
+	rm -f "$UPDATEIMG_STOCK_EXPECTED" "$UPDATEIMG_STOCK_ACTUAL"
+	return 1
+}
+
+managed_updateimg_stage_ready()
+{
+	userdata_mounted || mount_userdata || {
+		log "managed update.img userdata is unavailable"
+		return 1
+	}
+	[ -r "$UPDATEIMG_STATE" ] || {
+		log "managed update.img state is missing"
+		return 1
+	}
+	grep -q '"phase"[[:space:]]*:[[:space:]]*"stock-pending"' "$UPDATEIMG_STATE" || {
+		log "managed update.img state is not stock-pending"
+		return 1
+	}
+	[ -r "$UPDATEIMG_MANIFEST" ] || {
+		log "managed update.img manifest is missing"
+		return 1
+	}
+	[ -r "$UPDATEIMG_STAGED_PACKAGE" ] || {
+		log "managed staged update.img is missing"
+		return 1
+	}
+	[ -r "$UPDATEIMG_PACKAGE" ] || {
+		log "canonical /userdata/update.img is missing"
+		return 1
+	}
+}
+
+release_managed_stock_recovery()
+{
+	stock_updateimg_requested || {
+		log "canonical stock update.img BCB verification failed"
+		return 1
+	}
+	managed_updateimg_stage_ready || return 1
+	sync || return 1
+	touch "$STOCK_READY" || return 1
+	rm -f "$SUPPRESS_STOCK"
+}
+
+smoke_requested()
+{
+	SMOKE_EXACT=0
+	SMOKE_INTENT=0
+	wait_for_misc || return 1
+	rm -f "$SMOKE_EXPECTED" "$SMOKE_ACTUAL"
+
+	# Compare the exact first 836 bytes of Rockchip's 1088-byte BCB struct:
+	# command, status, recovery, and needupdate. systemFlag is intentionally
+	# outside this read-only detection window.
+	dd if=/dev/zero of="$SMOKE_EXPECTED" bs=836 count=1 2>/dev/null || return 1
+	printf '%s' 'boot-recovery' | \
+		dd of="$SMOKE_EXPECTED" bs=1 seek=0 conv=notrunc 2>/dev/null || return 1
+	printf 'recovery\n--rknetupdate-smoke-v1\n' | \
+		dd of="$SMOKE_EXPECTED" bs=1 seek=64 conv=notrunc 2>/dev/null || return 1
+	dd if="$MISC" of="$SMOKE_ACTUAL" bs=1 skip=16384 count=836 2>/dev/null || return 1
+
+	if cmp -s "$SMOKE_EXPECTED" "$SMOKE_ACTUAL"; then
+		SMOKE_EXACT=1
+		SMOKE_INTENT=1
+	elif tr -d '\000\377' < "$SMOKE_ACTUAL" | grep -q 'rknetupdate-smoke'; then
+		# Malformed or version-mismatched smoke requests are fail-closed. The
+		# helper will publish the exact validation error without clearing BCB.
+		SMOKE_INTENT=1
+	fi
+	rm -f "$SMOKE_EXPECTED" "$SMOKE_ACTUAL"
+	[ "$SMOKE_INTENT" -eq 1 ]
+}
+
+rootfs_v2_requested()
+{
+	wait_for_misc || return 1
+	rm -f "$ROOTFS_BCB"
+	dd if="$MISC" of="$ROOTFS_BCB" bs=1 skip=16384 count=836 2>/dev/null || return 1
+	if tr -d '\000\377' < "$ROOTFS_BCB" | grep -q -- '--rknetupdate-rootfs-v2'; then
+		rm -f "$ROOTFS_BCB"
+		return 0
+	fi
+	rm -f "$ROOTFS_BCB"
+	return 1
+}
+
+bundle_v1_requested()
+{
+	wait_for_misc || return 1
+	rm -f "$BUNDLE_BCB"
+	dd if="$MISC" of="$BUNDLE_BCB" bs=1 skip=16384 count=836 2>/dev/null || return 1
+	if tr -d '\000\377' < "$BUNDLE_BCB" | grep -q -- '--rknetupdate-bundle-v1'; then
+		rm -f "$BUNDLE_BCB"
+		return 0
+	fi
+	rm -f "$BUNDLE_BCB"
+	return 1
+}
+
+updateimg_v1_requested()
+{
+	wait_for_misc || return 1
+	rm -f "$UPDATEIMG_BCB"
+	dd if="$MISC" of="$UPDATEIMG_BCB" bs=1 skip=16384 count=836 2>/dev/null || return 1
+	if tr -d '\000\377' < "$UPDATEIMG_BCB" | grep -q -- '--rknetupdate-updateimg-v1'; then
+		rm -f "$UPDATEIMG_BCB"
+		return 0
+	fi
+	rm -f "$UPDATEIMG_BCB"
+	return 1
+}
+
+case "$1" in
+	start)
+		rm -f "$STOCK_READY"
+		if rockchip_sd_boot_requested; then
+			log "Rockchip SD/TF boot detected; handing off to stock recovery"
+			exit 0
+		fi
+		if ! wait_for_misc; then
+			touch "$SUPPRESS_STOCK"
+			log "misc partition did not appear within $DEVICE_WAIT_SECONDS seconds; staying in recovery rescue mode"
+			exit 0
+		fi
+		# The BCB may become visible after the first fast-path probe. Recheck
+		# before inspecting RKNetUpdate-private requests.
+		if rockchip_sd_boot_requested; then
+			log "Rockchip SD/TF BCB detected; handing off to stock recovery"
+			exit 0
+		fi
+		if updateimg_v1_requested; then
+			touch "$SUPPRESS_STOCK"
+			if [ ! -x "$HELPER" ]; then
+				log "complete update.img intent found but helper is missing; staying in recovery rescue mode"
+				exit 0
+			fi
+			log "================================================================"
+			log "RKNETUPDATE COMPLETE UPDATE.IMG OTA: RECOVERY MODE ENTERED"
+			log "staging p7, then handing off to Rockchip updater in this recovery boot"
+			log "================================================================"
+			if "$HELPER" --resume-updateimg-v1 --stay-in-recovery; then
+				if release_managed_stock_recovery; then
+					log "update.img stage and stock BCB verified"
+					log "continuing directly to Rockchip updater without a warm reboot"
+				else
+					log "update.img handoff verification failed; stock recovery remains suppressed"
+					log "inspect /run/rknetupdate-updateimg-v1.status.json and serial output"
+				fi
+			else
+				log "update.img workflow stopped fail-closed; stock recovery is suppressed"
+				log "inspect /run/rknetupdate-updateimg-v1.status.json and serial output"
+			fi
+			exit 0
+		fi
+
+		# A power loss after the helper changed the BCB leaves a durable stock
+		# request on p7. Revalidate it and resume the stock updater directly.
+		if stock_updateimg_requested; then
+			touch "$SUPPRESS_STOCK"
+			log "found a pending managed update.img stock handoff"
+			if release_managed_stock_recovery; then
+				log "managed update.img handoff recovered; continuing to Rockchip updater"
+			else
+				log "managed update.img resume validation failed; staying in recovery rescue mode"
+			fi
+			exit 0
+		fi
+
+		if bundle_v1_requested; then
+			touch "$SUPPRESS_STOCK"
+			if [ ! -x "$HELPER" ]; then
+				log "bundle v1 intent found but helper is missing; staying in recovery rescue mode"
+				exit 0
+			fi
+			log "bundle v1 intent found; resuming the fail-closed temporary-p7 multi-image workflow"
+			if "$HELPER" --resume-bundle-v1; then
+				log "bundle v1 workflow completed and BCB was cleared"
+				reboot_to_normal_system || exit 1
+			else
+				log "bundle v1 workflow stopped fail-closed; stock recovery is suppressed"
+				log "inspect /run/rknetupdate-bundle-v1.status.json and serial output"
+			fi
+			exit 0
+		fi
+
+		if rootfs_v2_requested; then
+			touch "$SUPPRESS_STOCK"
+			if [ ! -x "$HELPER" ]; then
+				log "rootfs v2 intent found but helper is missing; staying in recovery rescue mode"
+				exit 0
+			fi
+			log "================================================================"
+			log "RKNETUPDATE ROOTFS V2 UPDATE: RECOVERY MODE ENTERED"
+				log "serial progress uses the RKNETUPDATE-RECOVERY rootfs-v2 prefix with progress=NN%"
+			log "================================================================"
+			log "rootfs v2 intent found; resuming the fail-closed temporary-p7 workflow"
+			if "$HELPER" --resume-rootfs-v2; then
+				log "rootfs v2 workflow completed and BCB was cleared"
+				reboot_to_normal_system || exit 1
+			else
+				log "rootfs v2 workflow stopped fail-closed; stock recovery is suppressed"
+				log "inspect /run/rknetupdate-rootfs-v2.status.json and serial output"
+			fi
+			exit 0
+		fi
+
+		if smoke_requested; then
+			touch "$SUPPRESS_STOCK"
+			if [ "$SMOKE_EXACT" -ne 1 ]; then
+				log "detected a malformed smoke request; stock recovery is suppressed"
+			fi
+			if [ ! -x "$HELPER" ]; then
+				log "helper is missing; staying in recovery rescue mode"
+				exit 0
+			fi
+			log "validating the one-shot recovery smoke request"
+			if "$HELPER" --smoke; then
+				log "smoke validation succeeded and BCB was cleared; rebooting normally"
+				reboot_to_normal_system || exit 1
+			else
+				log "smoke validation failed; stock recovery is suppressed"
+				log "inspect /run/rknetupdate-smoke.status.json and stay in rescue mode"
+			fi
+			exit 0
+		fi
+
+		[ -x "$HELPER" ] || {
+			log "helper is missing; continuing to the standard recovery UI"
+			exit 0
+		}
+		if ! mount_userdata; then
+			log "userdata is unavailable; continuing to the standard recovery UI"
+			exit 0
+		fi
+		[ -f "$REQUEST" ] || exit 0
+
+		CONFIRM="$(sed -n '1p' "$REQUEST")"
+		log "found an explicit rootfs.apply request; starting offline validation"
+			if "$HELPER" --apply --allow-write --confirm "$CONFIRM"; then
+				touch "$SUPPRESS_STOCK"
+				log "rootfs write and readback succeeded; BCB cleared"
+				log "normal system reboot follows automatically"
+				reboot_to_normal_system || exit 1
+		else
+			log "rootfs apply did not complete; inspect status and BCB before retrying"
+			log "the standard recovery UI will start"
+		fi
+		;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
+
+exit 0

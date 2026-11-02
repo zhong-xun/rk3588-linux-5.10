@@ -1,0 +1,286 @@
+#!/bin/sh
+# Supervises BoardLab Wayland client after Weston is ready.
+# BusyBox ash compatible.
+
+ENV_FILE=/etc/boardlab/boardlab.env
+PID_DIR=/run/boardlab
+PID_FILE=$PID_DIR/boardlab.pid
+LOG_DIR=/var/log/boardlab
+LOG_FILE=$LOG_DIR/boardlab.log
+FAIL_FILE=/var/lib/boardlab/fail-count
+SAFE_MODE_FILE=/var/lib/boardlab/safe-mode
+BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
+MAX_FAILS=5
+WINDOW_SEC=120
+WAIT_WAYLAND_SEC=30
+WAYLAND_SETTLE_SEC=5
+MIN_SUCCESS_SEC=15
+BOARDLAB_BIN=/usr/bin/boardlab
+
+mkdir -p "$PID_DIR" "$LOG_DIR" /var/lib/boardlab /var/lib/boardlab/secrets /var/cache/boardlab
+
+log() {
+	# Keep a bounded log so rootfs cannot fill from crash loops.
+	if [ -f "$LOG_FILE" ]; then
+		sz=$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)
+		if [ "$sz" -gt 1048576 ]; then
+			mv "$LOG_FILE" "${LOG_FILE}.old" 2>/dev/null || true
+		fi
+	fi
+	echo "boardlab-supervisor: $*" >>"$LOG_FILE"
+}
+
+child_pid=
+shutdown() {
+	trap '' TERM INT
+	if [ -n "$child_pid" ]; then
+		kill "$child_pid" 2>/dev/null || true
+		wait "$child_pid" 2>/dev/null || true
+	fi
+	rm -f "$PID_FILE"
+	exit 0
+}
+trap shutdown TERM INT
+
+if [ -f "$ENV_FILE" ]; then
+	# shellcheck disable=SC1090
+	. "$ENV_FILE"
+fi
+
+: "${XDG_RUNTIME_DIR:=/run}"
+: "${WAYLAND_DISPLAY:=wayland-0}"
+: "${QT_QPA_PLATFORM:=wayland}"
+: "${QT_WAYLAND_DISABLE_WINDOWDECORATION:=1}"
+export XDG_RUNTIME_DIR WAYLAND_DISPLAY QT_QPA_PLATFORM QT_WAYLAND_DISABLE_WINDOWDECORATION
+export BOARDLAB_DATA_ROOT BOARDLAB_CACHE_DIR BOARDLAB_LOG_DIR
+export BOARDLAB_SUPERVISED=1
+# Ensure Qt finds platform plugins without a login session.
+if [ -z "${QT_PLUGIN_PATH:-}" ]; then
+	if [ -d /usr/lib/qt/plugins ]; then
+		export QT_PLUGIN_PATH=/usr/lib/qt/plugins
+	elif [ -d /usr/lib/qt5/plugins ]; then
+		export QT_PLUGIN_PATH=/usr/lib/qt5/plugins
+	fi
+fi
+if [ -z "${QT_QPA_PLATFORM_PLUGIN_PATH:-}" ] && [ -n "${QT_PLUGIN_PATH:-}" ]; then
+	export QT_QPA_PLATFORM_PLUGIN_PATH="$QT_PLUGIN_PATH/platforms"
+fi
+if [ -z "${QML2_IMPORT_PATH:-}" ]; then
+	if [ -d /usr/qml ]; then
+		export QML2_IMPORT_PATH=/usr/qml
+	elif [ -d /usr/lib/qt/qml ]; then
+		export QML2_IMPORT_PATH=/usr/lib/qt/qml
+	fi
+fi
+
+if [ ! -x "$BOARDLAB_BIN" ]; then
+	log "missing binary $BOARDLAB_BIN"
+	exit 1
+fi
+
+# Keep crash-loop protection for the current boot, but retry automatically on
+# the next boot. A permanent boardlab.safe=1 kernel argument still wins.
+boot_id=
+if [ -r "$BOOT_ID_FILE" ]; then
+	read -r boot_id <"$BOOT_ID_FILE" || true
+fi
+
+if grep -qw 'boardlab.safe=1' /proc/cmdline 2>/dev/null; then
+	log "safe-mode active, not starting BoardLab"
+	if [ -f /etc/boardlab/weston-desktop.ini ]; then
+		mkdir -p /etc/xdg/weston
+		cp /etc/boardlab/weston-desktop.ini /etc/xdg/weston/weston.ini 2>/dev/null || true
+	fi
+	exit 0
+fi
+
+if [ -f "$SAFE_MODE_FILE" ]; then
+	safe_boot_id=$(cat "$SAFE_MODE_FILE" 2>/dev/null || true)
+	if [ -n "$boot_id" ] && [ "$safe_boot_id" != "$boot_id" ]; then
+		log "clearing safe-mode from a previous boot"
+		rm -f "$SAFE_MODE_FILE" "$FAIL_FILE"
+	else
+		log "safe-mode active, not starting BoardLab"
+		if [ -f /etc/boardlab/weston-desktop.ini ]; then
+			mkdir -p /etc/xdg/weston
+			cp /etc/boardlab/weston-desktop.ini /etc/xdg/weston/weston.ini 2>/dev/null || true
+		fi
+		exit 0
+	fi
+fi
+
+socket_path="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+i=0
+while [ "$i" -lt "$WAIT_WAYLAND_SEC" ]; do
+	if [ -e "$socket_path" ]; then
+		break
+	fi
+	if [ -e "/run/$WAYLAND_DISPLAY" ]; then
+		XDG_RUNTIME_DIR=/run
+		export XDG_RUNTIME_DIR
+		socket_path="/run/$WAYLAND_DISPLAY"
+		break
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+
+if [ ! -e "$socket_path" ]; then
+	log "Wayland socket not ready after ${WAIT_WAYLAND_SEC}s ($socket_path)"
+	exit 1
+fi
+
+# Protocol handshake when available; otherwise brief settle for DRM/EGL.
+if command -v wayland-info >/dev/null 2>&1; then
+	j=0
+	while [ "$j" -lt 10 ]; do
+		if wayland-info >/dev/null 2>&1; then
+			break
+		fi
+		j=$((j + 1))
+		sleep 1
+	done
+else
+	sleep 2
+fi
+
+weston_running()
+{
+	pid=
+	if [ -r /run/weston.pid ]; then
+		IFS= read -r pid </run/weston.pid || true
+		case "$pid" in
+			''|*[!0-9]*) pid= ;;
+		esac
+		if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+			return 0
+		fi
+	fi
+	command -v pidof >/dev/null 2>&1 && pidof weston >/dev/null 2>&1
+}
+
+# Weston process should exist for product path.
+if ! weston_running; then
+	log "weston process not found after socket appeared"
+	exit 1
+fi
+
+# The Wayland socket can appear before DRM/EGL output initialization settles.
+# Give Weston a short stable window before starting the Qt Quick client.
+sleep "$WAYLAND_SETTLE_SEC"
+if [ ! -e "$socket_path" ] || ! weston_running; then
+	log "weston became unavailable during ${WAYLAND_SETTLE_SEC}s settle window"
+	exit 1
+fi
+
+now=$(date +%s 2>/dev/null || echo 0)
+fails=0
+ts=0
+if [ -f "$FAIL_FILE" ]; then
+	read -r fails ts <"$FAIL_FILE" || true
+	fails=${fails:-0}
+	ts=${ts:-0}
+	case "$fails" in
+		''|*[!0-9]*) fails=0 ;;
+	esac
+	case "$ts" in
+		''|*[!0-9]*) ts=0 ;;
+	esac
+	if [ "$now" -gt 0 ] && [ "$ts" -gt 0 ] && [ $((now - ts)) -gt "$WINDOW_SEC" ]; then
+		fails=0
+	fi
+fi
+
+backoff=2
+while [ "$fails" -lt "$MAX_FAILS" ]; do
+	if [ -f "$PID_FILE" ]; then
+		old=$(cat "$PID_FILE" 2>/dev/null || true)
+		if [ -n "$old" ] && kill -0 "$old" 2>/dev/null; then
+			log "already running pid $old"
+			exit 0
+		fi
+		rm -f "$PID_FILE"
+	fi
+
+	# Product kiosk always pairs the Qt UI with the LAN Web console so the
+	# on-screen QR / http://<ip>:17999 entry matches the running process.
+	# Token file is required by LocalWebServer; create a per-device default
+	# once if neither env nor file is present (Buildroot has no autorun.sh).
+	if [ -z "${BOARDLAB_WEB_TOKEN:-}" ]; then
+		token_file=${BOARDLAB_WEB_TOKEN_FILE:-/etc/boardlab/web.token}
+		if [ ! -s "$token_file" ]; then
+			mkdir -p "$(dirname "$token_file")" /var/lib/boardlab/secrets
+			# Topeet factory images share one documented first-boot token across
+			# Buildroot, Ubuntu and Debian.  A product variant may still set
+			# BOARDLAB_DEFAULT_WEB_TOKEN explicitly, while BOARDLAB_WEB_TOKEN and
+			# an existing non-empty token file retain their higher precedence.
+			default_token=${BOARDLAB_DEFAULT_WEB_TOKEN:-topeet}
+			printf '%s\n' "$default_token" >"$token_file"
+			chmod 600 "$token_file" 2>/dev/null || true
+			log "created web token file $token_file"
+		fi
+		export BOARDLAB_WEB_TOKEN_FILE="$token_file"
+	fi
+
+	log "starting BoardLab (fail=$fails) qpa=$QT_QPA_PLATFORM display=$WAYLAND_DISPLAY runtime=$XDG_RUNTIME_DIR web=on"
+	start_ts=$(date +%s 2>/dev/null || echo 0)
+	"$BOARDLAB_BIN" --kiosk --web --web-bind 0.0.0.0 --web-port 17999 >>"$LOG_FILE" 2>&1 &
+	pid=$!
+	child_pid=$pid
+	echo "$pid" >"$PID_FILE"
+
+	rc=0
+	wait "$pid" || rc=$?
+	child_pid=
+	rm -f "$PID_FILE"
+	end_ts=$(date +%s 2>/dev/null || echo 0)
+	ran=0
+	if [ "$start_ts" -gt 0 ] && [ "$end_ts" -ge "$start_ts" ]; then
+		ran=$((end_ts - start_ts))
+	fi
+	log "BoardLab exited rc=$rc runtime=${ran}s"
+
+	# A manual instance already owns this user's display. Avoid repeatedly
+	# launching a second Qt process just to activate that existing window.
+	if [ "$rc" -eq 20 ]; then
+		log "existing BoardLab session activated; leaving it running"
+		exit 0
+	fi
+
+	# Operator-requested restarts are successful exits, not startup failures.
+	if [ "$rc" -eq 0 ] || [ "$ran" -ge "$MIN_SUCCESS_SEC" ]; then
+		fails=0
+		backoff=2
+		rm -f "$FAIL_FILE"
+		log "normal exit or stable runtime, reset fail budget"
+	else
+		fails=$((fails + 1))
+		now=$(date +%s 2>/dev/null || echo 0)
+		echo "$fails $now" >"$FAIL_FILE"
+	fi
+
+	if [ "$fails" -ge "$MAX_FAILS" ]; then
+		log "crash budget exhausted, entering safe-mode"
+		if [ -n "$boot_id" ]; then
+			printf '%s\n' "$boot_id" >"$SAFE_MODE_FILE"
+		else
+			touch "$SAFE_MODE_FILE"
+		fi
+		if [ -f /etc/boardlab/weston-desktop.ini ]; then
+			mkdir -p /etc/xdg/weston
+			cp /etc/boardlab/weston-desktop.ini /etc/xdg/weston/weston.ini 2>/dev/null || true
+		fi
+		# Best-effort switch to maintenance desktop shell.
+		if command -v start-stop-daemon >/dev/null 2>&1; then
+			/etc/init.d/S49weston restart >/dev/null 2>&1 || true
+		fi
+		exit 1
+	fi
+
+	sleep "$backoff"
+	if [ "$backoff" -lt 8 ]; then
+		backoff=$((backoff * 2))
+	fi
+done
+
+exit 1

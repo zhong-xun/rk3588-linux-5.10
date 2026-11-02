@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=迅为开发板测试平台
+Name[zh_CN]=迅为开发板测试平台
+Comment=北京迅为电子开发板接口、外设与板端能力测试工具
+Comment[zh_CN]=北京迅为电子开发板接口、外设与板端能力测试工具
+Exec=boardlab-root --kiosk
+TryExec=boardlab-root
+Path=/
+Icon=boardlab
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=false
+StartupWMClass=BoardLab

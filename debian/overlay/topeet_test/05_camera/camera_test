@@ -1,0 +1,40 @@
+#!/bin/sh
+# A direct SSH or serial login does not inherit the local X11 session. Reuse
+# display :0 when it is available, without overriding a caller-provided
+# DISPLAY or XAUTHORITY.
+if [ -z "${DISPLAY:-}" ] && [ -S /tmp/.X11-unix/X0 ]; then
+    if [ -z "${XAUTHORITY:-}" ]; then
+        for xauthority_file in \
+            /run/user/*/gdm/Xauthority \
+            /run/lightdm/root/:0 \
+            /var/run/lightdm/root/:0 \
+            /home/*/.Xauthority; do
+            [ -r "$xauthority_file" ] || continue
+            export XAUTHORITY=$xauthority_file
+            break
+        done
+    fi
+    export DISPLAY=:0
+fi
+
+camera_sensor_is_ov5695() {
+    video4linux_root=${TOPEET_TEST_VIDEO4LINUX_ROOT:-/sys/class/video4linux}
+
+    # Only the registered V4L2 sensor subdevice identifies the active module.
+    # I2C client names may list every camera supported by the device tree.
+    for name_file in "$video4linux_root"/v4l-subdev*/name; do
+        [ -r "$name_file" ] || continue
+        sensor_name=
+        IFS= read -r sensor_name < "$name_file" || continue
+        case "$sensor_name" in
+            *[Oo][Vv]5695*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+if camera_sensor_is_ov5695; then
+    exec gst-launch-1.0 v4l2src device=/dev/video11 ! video/x-raw,format=NV12,width=1280,height=800,framerate=30/1 ! videoflip method=counterclockwise ! autovideosink
+fi
+
+exec gst-launch-1.0 v4l2src device=/dev/video11 ! video/x-raw,format=NV12,width=1280,height=800,framerate=30/1 ! autovideosink

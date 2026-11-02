@@ -1,0 +1,16 @@
+# 统一不做换行符转换（WSL 编译 + Windows 浏览混用时防抖动）
+* -text
+
+# 明确标记二进制类型（git 不做任何文本处理）
+*.png binary
+*.jpg binary
+*.pdf binary
+*.bin binary
+*.elf binary
+*.img binary
+*.so binary
+*.a binary
+*.zip binary
+*.gz binary
+*.xz binary
+*.whl binary

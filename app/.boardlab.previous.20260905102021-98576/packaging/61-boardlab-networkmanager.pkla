@@ -1,0 +1,9 @@
+[Allow BoardLab Wi-Fi management]
+# The installer adds its selected desktop user to the boardlab-wifi group. Limit
+# this compatibility policy to the four NetworkManager actions used by the
+# dedicated Wi-Fi application; it does not grant arbitrary root access.
+Identity=unix-group:boardlab-wifi
+Action=org.freedesktop.NetworkManager.wifi.scan;org.freedesktop.NetworkManager.network-control;org.freedesktop.NetworkManager.settings.modify.own;org.freedesktop.NetworkManager.settings.modify.system
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

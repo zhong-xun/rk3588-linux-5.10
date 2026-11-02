@@ -1,0 +1,146 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          weston
+# Required-Start:    mountvirtfs
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Linux weston daemon (BoardLab product)
+### END INIT INFO
+
+PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+PIDFILE=/run/weston.pid
+LOGFILE=/var/log/weston.log
+KIOSK_CFG=/etc/boardlab/weston-boardlab.ini
+DESKTOP_CFG=/etc/boardlab/weston-desktop.ini
+SAFE_MODE_FILE=/var/lib/boardlab/safe-mode
+BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
+
+. /etc/profile
+
+mkdir -p /run /var/log /var/lib/boardlab
+: "${XDG_RUNTIME_DIR:=/run}"
+export XDG_RUNTIME_DIR
+export WAYLAND_DISPLAY=wayland-0
+
+safe_mode_active()
+{
+	if grep -qw 'boardlab.safe=1' /proc/cmdline 2>/dev/null; then
+		return 0
+	fi
+	[ -f "$SAFE_MODE_FILE" ] || return 1
+
+	current_boot_id=
+	if [ -r "$BOOT_ID_FILE" ]; then
+		read -r current_boot_id <"$BOOT_ID_FILE" || true
+	fi
+	[ -n "$current_boot_id" ] || return 0
+
+	safe_boot_id=$(cat "$SAFE_MODE_FILE" 2>/dev/null || true)
+	[ "$safe_boot_id" = "$current_boot_id" ]
+}
+
+weston_config()
+{
+	if safe_mode_active; then
+		if [ -f "$DESKTOP_CFG" ]; then
+			echo "$DESKTOP_CFG"
+			return
+		fi
+	fi
+	if [ -f "$KIOSK_CFG" ]; then
+		echo "$KIOSK_CFG"
+		return
+	fi
+	echo "/etc/xdg/weston/weston.ini"
+}
+
+sync_default_ini()
+{
+	cfg=$1
+	mkdir -p /etc/xdg/weston
+	if [ -f "$cfg" ]; then
+		cp "$cfg" /etc/xdg/weston/weston.ini 2>/dev/null || true
+	fi
+	if [ "$cfg" = "$KIOSK_CFG" ] && [ -d /etc/xdg/weston/weston.ini.d ]; then
+		if [ ! -e /etc/xdg/weston/weston.ini.d.desktop-bak ]; then
+			mv /etc/xdg/weston/weston.ini.d /etc/xdg/weston/weston.ini.d.desktop-bak 2>/dev/null || true
+		else
+			rm -rf /etc/xdg/weston/weston.ini.d 2>/dev/null || true
+		fi
+	elif [ "$cfg" = "$DESKTOP_CFG" ] && [ -d /etc/xdg/weston/weston.ini.d.desktop-bak ]; then
+		rm -rf /etc/xdg/weston/weston.ini.d 2>/dev/null || true
+		mv /etc/xdg/weston/weston.ini.d.desktop-bak /etc/xdg/weston/weston.ini.d 2>/dev/null || true
+	fi
+}
+
+start_weston()
+{
+	cfg=$(weston_config)
+	sync_default_ini "$cfg"
+	echo "weston config: $cfg" >>"$LOGFILE"
+
+	if command -v start-stop-daemon >/dev/null 2>&1; then
+		start-stop-daemon -S -b -m -p "$PIDFILE" -x /usr/bin/weston -- \
+			--config="$cfg" --log="$LOGFILE"
+	else
+		/usr/bin/weston --config="$cfg" --log="$LOGFILE" &
+		echo $! >"$PIDFILE"
+	fi
+
+	i=0
+	while [ "$i" -lt 15 ]; do
+		if [ -e "$XDG_RUNTIME_DIR/wayland-0" ] || [ -e /run/wayland-0 ]; then
+			break
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+}
+
+stop_weston()
+{
+	if [ -f "$PIDFILE" ]; then
+		kill "$(cat "$PIDFILE")" 2>/dev/null || true
+		i=0
+		while [ "$i" -lt 5 ]; do
+			if ! kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+				break
+			fi
+			i=$((i + 1))
+			sleep 1
+		done
+		if kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+			kill -9 "$(cat "$PIDFILE")" 2>/dev/null || true
+		fi
+		rm -f "$PIDFILE"
+	fi
+	killall weston 2>/dev/null || true
+	rm -f /run/wayland-0 /run/wayland-0.lock 2>/dev/null || true
+}
+
+case "$1" in
+	start)
+		echo -n "starting weston... "
+		start_weston
+		echo "done."
+		;;
+	stop)
+		echo -n "stopping weston... "
+		stop_weston || true
+		echo "done."
+		;;
+	restart|reload)
+		echo -n "stopping weston... "
+		stop_weston || true
+		echo "done."
+		echo -n "starting weston... "
+		start_weston
+		echo "done."
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+
+exit 0

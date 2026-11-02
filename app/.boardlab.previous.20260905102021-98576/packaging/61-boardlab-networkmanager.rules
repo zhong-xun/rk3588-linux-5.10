@@ -1,0 +1,18 @@
+// This is a session-native fallback for the explicit Wi-Fi test application.
+// Local Authority based images use the matching .pkla policy instead. Keep
+// the group aligned with that compatibility policy. `isInGroup` is supported
+// by the polkit versions shipped with Debian 11/12 and Ubuntu 20.04/22.04/24.04.
+polkit.addRule(function(action, subject) {
+    if (!subject.isInGroup("boardlab-wifi")) {
+        return polkit.Result.NOT_HANDLED;
+    }
+
+    if (action.id == "org.freedesktop.NetworkManager.wifi.scan" ||
+            action.id == "org.freedesktop.NetworkManager.network-control" ||
+            action.id == "org.freedesktop.NetworkManager.settings.modify.own" ||
+            action.id == "org.freedesktop.NetworkManager.settings.modify.system") {
+        return polkit.Result.YES;
+    }
+
+    return polkit.Result.NOT_HANDLED;
+});

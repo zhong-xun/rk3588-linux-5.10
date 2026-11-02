@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "image": "rootfs.img",
+  "size": 536870912,
+  "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "filesystem": "ext4",
+  "target_partlabel": "rootfs",
+  "expected_parent": "/dev/mmcblk0"
+}

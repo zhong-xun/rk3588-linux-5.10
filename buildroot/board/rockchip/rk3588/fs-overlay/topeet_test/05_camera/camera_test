@@ -1,0 +1,31 @@
+#!/bin/sh
+# A direct SSH or serial login does not inherit the Weston session. Reuse the
+# board's normal Wayland socket when it is available so autovideosink can
+# select waylandsink instead of competing for a KMS plane.
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S /run/wayland-0 ]; then
+    export XDG_RUNTIME_DIR=/run
+    export WAYLAND_DISPLAY=wayland-0
+fi
+
+camera_sensor_is_ov5695() {
+    video4linux_root=${TOPEET_TEST_VIDEO4LINUX_ROOT:-/sys/class/video4linux}
+
+    # The ISP capture node hides the sensor model, while the registered V4L2
+    # sensor subdevice retains it. Do not use I2C client names here: Rockchip
+    # device trees may expose all supported camera clients at the same time.
+    for name_file in "$video4linux_root"/v4l-subdev*/name; do
+        [ -r "$name_file" ] || continue
+        sensor_name=
+        IFS= read -r sensor_name < "$name_file" || continue
+        case "$sensor_name" in
+            *[Oo][Vv]5695*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+if camera_sensor_is_ov5695; then
+    exec gst-launch-1.0 v4l2src device=/dev/video11 ! video/x-raw,format=NV12,width=1280,height=800,framerate=30/1 ! waylandsink rotate-method=90l
+fi
+
+exec gst-launch-1.0 v4l2src device=/dev/video11 ! video/x-raw,format=NV12,width=1280,height=800,framerate=30/1 ! autovideosink

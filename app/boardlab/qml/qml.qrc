@@ -1,0 +1,53 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="icons/boardlab.svg">../assets/icons/boardlab.svg</file>
+        <file>Main.qml</file>
+        <file>components/AppSurface.qml</file>
+        <file>components/BoardToolsActionButton.qml</file>
+        <file>components/BoardToolsApp.qml</file>
+        <file>components/BoardLabTheme.qml</file>
+        <file>components/BoardLabCapabilityMap.js</file>
+        <file>components/CameraPreviewSurface.qml</file>
+        <file>components/BoardToolsComboBox.qml</file>
+        <file>components/BoardToolsHeaderPill.qml</file>
+        <file>components/BoardToolsToolPicker.qml</file>
+        <file>components/BoardToolsTextField.qml</file>
+        <file>components/VirtualKeyboard.qml</file>
+        <file>components/BoardToolsSlider.qml</file>
+        <file>components/BoardToolsSpinBox.qml</file>
+        <file>components/BoardToolsInfoBlock.qml</file>
+        <file>components/LucideIcon.qml</file>
+        <file>components/BoardToolsLogPanel.qml</file>
+        <file>components/BoardToolsOverviewTile.qml</file>
+        <file>components/BoardToolsStatusHero.qml</file>
+        <file>components/BoardToolsSwitchRow.qml</file>
+        <file>components/BoardToolsToolButtonLite.qml</file>
+        <file>components/BoardToolsWarningBlock.qml</file>
+        <file>components/BoardToolsWorkPane.qml</file>
+        <file>components/BoardToolsWorkSurface.qml</file>
+        <file>components/CommandPill.qml</file>
+        <file>components/DiagnosticsApp.qml</file>
+        <file>components/EnvironmentTestApp.qml</file>
+        <file>components/GpuPreviewSurface.qml</file>
+        <file>components/GpuTestApp.qml</file>
+        <file>components/KeyTestApp.qml</file>
+        <file>components/NpuYoloDemoApp.qml</file>
+        <file>components/NpuLoadTrendCard.qml</file>
+        <file>components/BoardLabCategoryCard.qml</file>
+        <file>components/HomeMetric.qml</file>
+        <file>components/HomeScreen.qml</file>
+        <file>components/LockScreen.qml</file>
+        <file>components/MockApp.qml</file>
+        <file>components/RkDeskApp.qml</file>
+        <file>components/RkDeskMiniMetric.qml</file>
+        <file>components/RkDeskModuleCard.qml</file>
+        <file>components/RkDeskStatusChip.qml</file>
+        <file>components/RkDeskTrackRow.qml</file>
+        <file>components/ResourceMonitorApp.qml</file>
+        <file>components/StatusBar.qml</file>
+        <file>components/StorageTestApp.qml</file>
+        <file>components/WebConsoleApp.qml</file>
+        <file>components/WifiTestApp.qml</file>
+        <file>components/WorkspaceTile.qml</file>
+    </qresource>
+</RCC>

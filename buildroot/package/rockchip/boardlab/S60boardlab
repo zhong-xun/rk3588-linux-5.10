@@ -1,0 +1,159 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          boardlab
+# Required-Start:    weston
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: BoardLab kiosk UI
+### END INIT INFO
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+SUPERVISOR=/usr/sbin/boardlab-supervisor
+BOARDLAB_BIN=/usr/bin/boardlab
+PID_FILE=/run/boardlab/boardlab.pid
+SUP_PID=/run/boardlab/supervisor.pid
+
+pid_from_file()
+{
+	local pid_file=$1 pid
+
+	[ -r "$pid_file" ] || return 1
+	IFS= read -r pid <"$pid_file" || return 1
+	case "$pid" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	printf '%s\n' "$pid"
+}
+
+pid_file_matches_program()
+{
+	local pid_file=$1 program=$2 pid command_line
+
+	pid=$(pid_from_file "$pid_file") || return 1
+	kill -0 "$pid" 2>/dev/null || return 1
+	[ -r "/proc/$pid/cmdline" ] || return 1
+	command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+	case "$command_line" in
+		*"$program"*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+stop_pid_file()
+{
+	local pid_file=$1 program=$2 pid i=0
+
+	if pid=$(pid_from_file "$pid_file"); then
+		if pid_file_matches_program "$pid_file" "$program"; then
+			kill "$pid" 2>/dev/null || true
+			while [ "$i" -lt 10 ] && pid_file_matches_program "$pid_file" "$program"; do
+				sleep 1
+				i=$((i + 1))
+			done
+			if pid_file_matches_program "$pid_file" "$program"; then
+				kill -KILL "$pid" 2>/dev/null || true
+			fi
+		else
+			echo "ignoring stale PID file: $pid_file" >&2
+		fi
+	fi
+	rm -f -- "$pid_file"
+}
+
+supervisor_log_tail()
+{
+	local log_file=/var/log/boardlab/boardlab.log
+
+	[ -r "$log_file" ] || return 0
+	echo "--- last BoardLab supervisor lines ---" >&2
+	tail -n 40 "$log_file" >&2 2>/dev/null || true
+	echo "--- end BoardLab supervisor log ---" >&2
+}
+
+wait_for_supervisor()
+{
+	local i=0
+
+	while [ "$i" -lt 5 ]; do
+		if pid_file_matches_program "$SUP_PID" "$SUPERVISOR"; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+start()
+{
+	echo -n "Starting boardlab: "
+	mkdir -p /run/boardlab /var/log/boardlab /var/lib/boardlab /var/cache/boardlab
+
+	if pid_file_matches_program "$SUP_PID" "$SUPERVISOR"; then
+		echo "already running"
+		return 0
+	fi
+	rm -f -- "$SUP_PID"
+	if command -v start-stop-daemon >/dev/null 2>&1; then
+		if ! start-stop-daemon -S -b -m -p "$SUP_PID" -x "$SUPERVISOR"; then
+			echo "FAILED"
+			return 1
+		fi
+	else
+		"$SUPERVISOR" &
+		printf '%s\n' "$!" >"$SUP_PID"
+	fi
+	if ! wait_for_supervisor; then
+		echo "FAILED"
+		rm -f -- "$SUP_PID"
+		supervisor_log_tail
+		return 1
+	fi
+	if pid_file_matches_program "$PID_FILE" "$BOARDLAB_BIN"; then
+		echo "OK (BoardLab)"
+	else
+		echo "OK (supervisor waiting for BoardLab)"
+	fi
+}
+
+stop()
+{
+	echo -n "Stopping boardlab: "
+	# Stop the restart loop first; it forwards TERM to its owned Qt client.
+	stop_pid_file "$SUP_PID" "$SUPERVISOR"
+	stop_pid_file "$PID_FILE" "$BOARDLAB_BIN"
+	echo "OK"
+}
+
+case "$1" in
+	start)
+		start
+		exit $?
+		;;
+	stop)
+		stop
+		;;
+	restart|reload)
+		stop
+		sleep 1
+		start
+		exit $?
+		;;
+	status)
+		if pid_file_matches_program "$PID_FILE" "$BOARDLAB_BIN"; then
+			echo "BoardLab is running"
+		elif pid_file_matches_program "$SUP_PID" "$SUPERVISOR"; then
+			echo "BoardLab supervisor is waiting or recovering"
+		else
+			echo "BoardLab is stopped"
+			exit 3
+		fi
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|status}"
+		exit 1
+		;;
+esac
+
+exit 0

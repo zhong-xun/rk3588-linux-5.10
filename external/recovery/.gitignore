@@ -1,0 +1,7 @@
+# Recovery local build products
+*.o
+*.a
+*.so
+/recovery
+/recovery_autogenerate.h
+

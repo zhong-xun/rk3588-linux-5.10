@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/web">
+        <file>index.html</file>
+        <file alias="tokens.css">../tokens.css</file>
+        <file>styles.css</file>
+        <file>app.js</file>
+    </qresource>
+</RCC>

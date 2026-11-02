@@ -1,0 +1,3 @@
+# BoardLab Wi-Fi operations are brokered by a root-owned command whitelist.
+# Do not replace this entry with a wildcard nmcli or shell authorization.
+%boardlab-wifi ALL=(root) NOPASSWD: /usr/lib/boardlab/boardlab-wifi

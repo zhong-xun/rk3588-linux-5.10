@@ -1,0 +1,2 @@
+# Increase Dropbear's SSH receive window for Gigabit LAN transfers.
+DROPBEAR_ARGS="-W 1048576"

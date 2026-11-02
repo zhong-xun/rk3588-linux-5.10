@@ -1,0 +1,1 @@
+../scripts/post-rknetupdate-rootfs.sh

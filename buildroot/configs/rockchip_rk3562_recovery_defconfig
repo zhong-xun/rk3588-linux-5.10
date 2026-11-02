@@ -1,0 +1,6 @@
+#include "base/base.config"
+#include "base/recovery.config"
+#include "chips/rk3562_aarch64.config"
+
+# Recovery must not pull board test/rootfs overlays (topeet_test/oem/media/etc).
+BR2_ROOTFS_OVERLAY="board/rockchip/common/base"

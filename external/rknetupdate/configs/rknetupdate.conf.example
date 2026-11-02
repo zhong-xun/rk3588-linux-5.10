@@ -1,0 +1,49 @@
+# RKNetUpdate phase-1 configuration.
+# Factory LAN token. The web console asks the operator to enter it and keeps it
+# only in page memory. Override it for customer deployments and keep this file
+# mode 0600.
+
+listen=0.0.0.0:17888
+token=topeet
+upload_dir=/var/lib/rknetupdate/uploads
+max_upload_mib=128
+
+# rootfs.img is never written by the normal system. When enabled, it is staged
+# under this fixed directory, checked for ext4 geometry and SHA-256, then
+# fully checked and applied by recovery v2 with its bundled e2fsprogs.
+rootfs_enabled=false
+rootfs_allow_write=false
+rootfs_max_upload_mib=8192
+rootfs_device=/dev/disk/by-partlabel/rootfs
+rootfs_stage_dir=/var/lib/rknetupdate/rootfs-v2
+rootfs_e2fsck=/usr/sbin/e2fsck
+
+# Offline multi-image bundle v1: upload rootfs.img and optional boot.img and
+# uboot.img together. All three are staged on rootfs and are written only by
+# the RKNetUpdate recovery helper via temporary p7/userdata.
+# This is intentionally independent from Rockchip update.img.
+bundle_enabled=false
+bundle_allow_write=false
+bundle_max_upload_mib=8448
+bundle_stage_dir=/var/lib/rknetupdate/bundle-v1
+
+# Complete Rockchip update.img OTA.  This is a separate workflow: the whole
+# RKFW/RKAF package is staged and recovery delegates compatible members to the
+# SDK updateEngine.  Keep it disabled in the generic sample profile.
+updateimg_enabled=false
+updateimg_allow_write=false
+updateimg_max_upload_mib=8192
+updateimg_stage_dir=/var/lib/rknetupdate/updateimg-v1
+
+# The shipped default cannot write a partition.
+allow_flash=false
+dry_run=true
+test_mode=false
+
+# Label links are resolved and the final targets must be real partitions.
+uboot_device=/dev/disk/by-partlabel/uboot
+boot_device=/dev/disk/by-partlabel/boot
+
+# Required for real flash mode. Use a direct whole-disk path, never a symlink.
+# Determine the eMMC disk on the actual board; it may be mmcblk0 or mmcblk1.
+expected_parent_device=

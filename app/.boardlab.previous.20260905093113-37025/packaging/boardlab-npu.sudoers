@@ -1,0 +1,3 @@
+# BoardLab NPU telemetry is brokered by a root-owned, fixed-path reader.
+# The empty argument string is intentional: sudo must reject every argument.
+%boardlab-npu ALL=(root) NOPASSWD: /usr/lib/boardlab/boardlab-npu-load ""

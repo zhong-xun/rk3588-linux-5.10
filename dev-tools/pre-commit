@@ -1,0 +1,18 @@
+#!/bin/bash
+# git pre-commit 钩子：拦截大文件（阈值 50MB）
+# 安装：cp dev-tools/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+MAX_BYTES=$((50 * 1024 * 1024))
+fail=0
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    size=$(stat -c%s "$f" 2>/dev/null) || continue
+    if [ "$size" -gt "$MAX_BYTES" ]; then
+        echo "❌ 文件过大($((size / 1024 / 1024))MB): $f"
+        echo "   → 请加入 .gitignore，或用 git-lfs 管理"
+        fail=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+if [ "$fail" -ne 0 ]; then
+    echo "提交已阻止（如确需提交，用 git commit --no-verify 跳过本钩子）"
+fi
+exit $fail

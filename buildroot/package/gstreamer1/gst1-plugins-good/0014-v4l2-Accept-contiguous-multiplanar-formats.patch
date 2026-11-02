@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Topeet <support@topeet.com>
+Date: Mon, 27 Jul 2026 15:10:00 +0800
+Subject: [PATCH 14/15] v4l2: Accept contiguous formats on multiplanar queues
+
+The RK3588 HDMI RX uses the V4L2 multiplanar API while storing NV24's Y
+and UV component planes in one contiguous memory plane. The driver
+therefore correctly changes num_planes from the two GstVideoInfo
+component planes to one V4L2 memory plane.
+
+gst_v4l2_object_save_format() already supports this layout and
+extrapolates the component offsets and strides from the single memory
+plane. Allow that path to run when TRY_FMT or S_FMT returns one plane,
+while continuing to reject all other unexpected plane-count changes.
+
+Signed-off-by: Topeet <support@topeet.com>
+---
+ sys/v4l2/gstv4l2object.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2object.c b/sys/v4l2/gstv4l2object.c
+--- a/sys/v4l2/gstv4l2object.c
++++ b/sys/v4l2/gstv4l2object.c
+@@ -3934,8 +3934,14 @@ gst_v4l2_object_set_format_full (GstV4l2Object * v4l2object, GstCaps * caps,
+     align.padding_right = format.fmt.pix.width - width;
+   }
+ 
+-  if (is_mplane && format.fmt.pix_mp.num_planes != n_v4l_planes)
+-    goto invalid_planes;
++  if (is_mplane && format.fmt.pix_mp.num_planes != n_v4l_planes) {
++    /* Component planes may share one contiguous V4L2 memory plane. */
++    if (format.fmt.pix_mp.num_planes != 1)
++      goto invalid_planes;
++    GST_INFO_OBJECT (v4l2object->dbg_obj,
++        "using one contiguous memory plane for %d component planes",
++        n_v4l_planes);
++  }
+ 
+   /* used to check colorimetry and interlace mode fields presence */
+   s = gst_caps_get_structure (caps, 0);
+-- 
+2.43.0
+

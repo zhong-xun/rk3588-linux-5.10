@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# RKNETUPDATE-MANAGED-FILESYSTEM-V1
+
+DAEMON=/usr/sbin/rknetupdate
+CONFIG=/etc/rknetupdate.conf
+PIDFILE=/var/run/rknetupdate.pid
+STATE_DIR=/var/lib/rknetupdate
+
+prepare_state()
+{
+  mkdir -p "$STATE_DIR/uploads" "$STATE_DIR/rootfs-v2" \
+    "$STATE_DIR/bundle-v1" "$STATE_DIR/updateimg-v1"
+  chmod 700 "$STATE_DIR" "$STATE_DIR/uploads" "$STATE_DIR/rootfs-v2" \
+    "$STATE_DIR/bundle-v1" "$STATE_DIR/updateimg-v1"
+}
+
+case "$1" in
+  start)
+    echo "Starting RKNetUpdate"
+    prepare_state
+    if command -v start-stop-daemon >/dev/null 2>&1; then
+      start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$DAEMON" -- \
+        --config "$CONFIG"
+    elif [ ! -s "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+      "$DAEMON" --config "$CONFIG" >/var/log/rknetupdate.log 2>&1 &
+      echo $! >"$PIDFILE"
+    fi
+    ;;
+  stop)
+    echo "Stopping RKNetUpdate"
+    if command -v start-stop-daemon >/dev/null 2>&1; then
+      start-stop-daemon -K -q -p "$PIDFILE" -x "$DAEMON" || true
+    elif [ -s "$PIDFILE" ]; then
+      kill "$(cat "$PIDFILE")" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE"
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac

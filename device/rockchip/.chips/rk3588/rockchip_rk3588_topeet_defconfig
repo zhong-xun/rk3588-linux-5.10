@@ -1,0 +1,6 @@
+RK_WIFIBT_CHIP="RTL8723DU"
+RK_KERNEL_CFG_FRAGMENTS="rockchip_linux_docker.config"
+RK_KERNEL_DTS_NAME="topeet-rk3588-linux"
+RK_USE_FIT_IMG=y
+RK_PARAMETER="parameter.txt"
+RK_EXTRA_PARTITION_NUM=0

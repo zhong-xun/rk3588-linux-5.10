@@ -1,0 +1,50 @@
+#!/bin/sh
+
+ES8388_CARD="${TOPEET_ES8388_CARD:-rockchipes8388}"
+WAIT_RETRIES="${TOPEET_ES8388_WAIT_RETRIES:-20}"
+WAIT_INTERVAL="${TOPEET_ES8388_WAIT_INTERVAL:-0.1}"
+
+set_mixer()
+{
+	amixer -c "$ES8388_CARD" sset "$1" "$2" >/dev/null 2>&1 || true
+}
+
+init_es8388()
+{
+	local i
+
+	i=0
+	while [ "$i" -lt "$WAIT_RETRIES" ]; do
+		if amixer -c "$ES8388_CARD" scontrols >/dev/null 2>&1; then
+			set_mixer "Headphone" "on"
+			set_mixer "Speaker" "on"
+			set_mixer "hp switch" "on"
+			set_mixer "spk switch" "on"
+			set_mixer "OUT1" "on"
+			set_mixer "OUT2" "on"
+			set_mixer "PCM" "192"
+			set_mixer "Output 1" "31"
+			set_mixer "Output 2" "31"
+			set_mixer "Left Mixer Left" "on"
+			set_mixer "Right Mixer Right" "on"
+			set_mixer "Main Mic" "on"
+			return 0
+		fi
+
+		i=$((i + 1))
+		[ "$i" -lt "$WAIT_RETRIES" ] && sleep "$WAIT_INTERVAL"
+	done
+
+	return 0
+}
+
+case "$1" in
+	start|restart|"")
+		init_es8388
+		;;
+	*)
+		exit 0
+		;;
+esac
+
+exit 0

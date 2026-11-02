@@ -1,0 +1,95 @@
+# ============================================================
+# RK3588 SDK（迅为 iTOP-3588）仓库 .gitignore
+# 原则：跟踪"可读可改的源码"，忽略"编译产物 + 大体积二进制"
+# 说明：被忽略的文件仍留在磁盘上，只是不进 git；
+#       想重新跟踪某个目录/类型，删掉对应行即可。
+# 配套：dev-tools/gen_read_settings.py（VS Code 阅读配置生成器）
+# ============================================================
+
+# ---------- 1. 编译产物（目录 + 中间文件） ----------
+/out/
+/rockdev/
+/output/
+*.o
+*.o.cmd
+*.ko
+*.cmd
+*.mod
+*.mod.c
+*.a
+*.so
+*.so.*
+*.elf
+*.map
+*.img
+*.dtb
+*.bin
+*.dep
+*.order
+Module.symvers
+modules.order
+.config
+.config.old
+vmlinux
+vmlinux.*
+System.map
+arch/arm64/boot/Image*
+arch/arm64/boot/vmlinux*
+
+# ---------- 2. 根目录大块头（工具链 / 烧写工具 / 私有固件） ----------
+/prebuilts/
+/tools/
+/rkbin/
+/.boardlab-runtime*/
+
+# ---------- 3. 厂商 PDF 文档、安装包、压缩包 ----------
+/docs/cn/
+/docs/en/
+*.pdf
+*.whl
+*.deb
+*.zip
+*.7z
+*.tar
+*.tar.*
+*.gz
+*.xz
+/buildroot/dl/
+/buildroot/archives/
+/buildroot/output/
+
+# ---------- 4. external 里的纯二进制 SDK（不需要 diff 的） ----------
+#      想跟踪哪个就删哪行（比如以后改 rknpu2 的示例代码）
+/external/rknn-toolkit2/
+/external/rknpu2/
+/external/libmali/
+/external/rkwifibt/
+/external/chromium/
+
+# ---------- 5. 设备资源里的二进制 ----------
+/device/rockchip/common/tools/
+/device/rockchip/common/linux-kbuild/
+/device/rockchip/common/fonts/
+/device/rockchip/common/extra-parts/
+
+# ---------- 6. 多媒体素材（图片 / 音视频） ----------
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.ico
+*.mp4
+*.wav
+*.mp3
+
+# ---------- 7. repo 多仓残骸备份（flatten_nested_git.sh 生成） ----------
+**/.git.bak-vendor/
+
+# ---------- 8. 编辑器 / 系统垃圾 ----------
+*.swp
+*.swo
+*~
+.DS_Store
+*.orig
+*.rej

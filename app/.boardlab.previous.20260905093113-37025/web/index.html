@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111612">
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <title>迅为开发板测试平台 · 北京迅为电子</title>
+</head>
+<body>
+  <a class="skip-link" id="skipLink" href="#content" hidden>跳至主内容</a>
+  <section class="auth-gate" id="authGate" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-ambient" aria-hidden="true"><span>GPIO</span><span>UART</span><span>CAN FD</span><span>HDMI IN</span></div>
+    <div class="auth-panel">
+      <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><svg class="chrome-icon" viewBox="0 0 24 24" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M11 9h4a2 2 0 0 0 2-2V3M7 21v-4a2 2 0 0 1 2-2h4"></path><circle cx="9" cy="9" r="2"></circle><circle cx="15" cy="15" r="2"></circle></svg></span><span><strong>北京迅为电子</strong><small>开发板测试平台</small></span></div>
+      <p class="eyebrow">DEVELOPMENT BOARD TEST PLATFORM</p>
+      <h1 id="authTitle">开发板测试平台访问认证</h1>
+      <p class="auth-copy">状态读取与硬件操作均受 Token 保护。板卡出厂默认 Token 为 <strong>topeet</strong>。</p>
+      <form class="auth-form" id="authForm">
+        <input class="auth-username" type="text" name="username" autocomplete="username" value="boardlab" aria-hidden="true" tabindex="-1">
+        <label for="tokenInput">访问 Token</label>
+        <div class="password-field">
+          <input id="tokenInput" name="token" type="password" autocomplete="current-password" spellcheck="false" required>
+          <button class="field-action" id="toggleToken" type="button" aria-label="显示 Token" aria-pressed="false" aria-controls="tokenInput"><svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696C3.423 7.594 7.36 5 12 5c4.639 0 8.573 2.594 9.938 6.652a1 1 0 0 1 0 .696C20.577 16.406 16.64 19 12 19c-4.639 0-8.573-2.594-9.938-6.652Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+        <button class="button primary auth-submit" type="submit">进入测试平台</button>
+        <p class="auth-error" id="authError" role="alert"></p>
+      </form>
+      <div class="auth-foot"><span class="status-dot online"></span><span>{{PRODUCT_NAME}}</span><span class="divider"></span><span>{{KERNEL_TEXT}}</span></div>
+      <p class="auth-note">Token 仅保存在当前页面内存中，刷新或关闭页面后会自动清除。</p>
+    </div>
+  </section>
+
+  <div class="app-shell" id="appShell" hidden>
+    <div class="mobile-scrim" id="mobileScrim" hidden></div>
+    <aside class="sidebar" id="sidebar" aria-label="迅为开发板测试平台主导航" aria-hidden="false">
+      <button class="icon-button sidebar-close" id="closeMobileMenu" type="button" aria-label="关闭导航">
+        <svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <a class="sidebar-brand" href="#/home" aria-label="返回迅为开发板测试平台首页">
+        <span class="brand-mark" aria-hidden="true"><svg class="chrome-icon" viewBox="0 0 24 24" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M11 9h4a2 2 0 0 0 2-2V3M7 21v-4a2 2 0 0 1 2-2h4"></path><circle cx="9" cy="9" r="2"></circle><circle cx="15" cy="15" r="2"></circle></svg></span>
+        <span><strong>北京迅为电子</strong><small>开发板测试平台</small></span>
+      </a>
+      <nav class="sidebar-scroll">
+        <a class="nav-item home-nav" href="#/home" data-route="home"><span class="nav-glyph"><svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span><span>实验台首页</span></a>
+        <div id="sidebarModules"></div>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="secure-row"><span class="status-dot online"></span><span>Token 已保护</span></div>
+        <button class="text-button" id="reauthenticate" type="button">锁定并重新登录</button>
+      </div>
+    </aside>
+
+    <div class="main-shell" id="mainShell">
+      <header class="topbar">
+        <div class="topbar-leading">
+          <button class="icon-button mobile-menu" id="mobileMenu" type="button" aria-label="打开导航" aria-expanded="false" aria-controls="sidebar">
+            <svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <button class="icon-button back-button" id="backHome" type="button" aria-label="返回首页" hidden>
+            <svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="page-heading">
+            <p class="breadcrumb" id="breadcrumb">迅为 / 首页</p>
+            <h1 id="pageTitle">迅为开发板测试平台</h1>
+            <p id="pageSubtitle">板端状态、接口发现与独立测试应用</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="connection-chip" id="connectionChip" role="status" aria-live="polite" aria-atomic="true"><span class="status-dot online" id="connectionDot"></span><span id="bridgeState">{{WEB_STATUS}}</span></div>
+          <button class="button quiet" id="refreshButton" type="button">刷新状态</button>
+        </div>
+      </header>
+
+      <div class="offline-banner" id="offlineBanner" hidden role="status">
+        <strong>连接暂时中断</strong><span id="offlineMessage">正在等待测试平台服务恢复…</span><button class="text-button" id="retryButton" type="button">立即重试</button>
+      </div>
+
+      <main class="content" id="content" tabindex="-1">
+        <section class="route-page home-page" id="homePage">
+          <div class="home-hero">
+            <div class="hero-copy-block">
+              <p class="eyebrow">CONTROL CONTEXT / 北京迅为电子</p>
+              <h2>当前工作区</h2>
+              <p>从已验证工具进入一次任务。配置、执行、证据与结果按顺序保留，硬件状态不以样例数据替代。</p>
+              <div class="hero-meta"><span id="heroHost">{{WEB_URL}}</span><span>{{KERNEL_TEXT}}</span></div>
+              <div class="hero-actions"><button class="button primary" id="discoverButton" type="button">重新发现硬件</button><a class="button secondary" href="#/tool/gpio">开始测试</a></div>
+            </div>
+            <div class="hero-status-panel" aria-label="迅为开发板测试平台连接状态">
+              <span class="dial-label">BOARD STATUS</span>
+              <div class="hero-status-line"><span class="status-dot online" id="heroStatusDot"></span><strong id="heroBoardState">板端已连接</strong></div>
+              <span id="heroToolSummary">正在发现可用硬件工具</span>
+            </div>
+          </div>
+
+          <section class="section-block" aria-labelledby="telemetryTitle">
+            <div class="section-heading"><div><p class="eyebrow">LIVE TELEMETRY</p><h2 id="telemetryTitle">运行状态</h2></div><span class="section-note" id="lastUpdated">尚未刷新</span></div>
+            <div class="telemetry-grid">
+              <article class="metric-panel"><div class="metric-head"><span>CPU</span><span id="cpuTrend">实时</span></div><strong id="cpu">--</strong><progress id="cpuProgress" aria-label="CPU 使用率" max="100" value="0"></progress><small id="temp">--</small></article>
+              <article class="metric-panel"><div class="metric-head"><span>内存</span><span>占用比例</span></div><strong id="mem">--</strong><progress id="memoryProgress" aria-label="内存使用率" max="100" value="0"></progress><small id="memText">--</small></article>
+              <article class="metric-panel"><div class="metric-head"><span>存储</span><span>系统盘</span></div><strong id="disk">--</strong><progress id="diskProgress" aria-label="存储使用率" max="100" value="0"></progress><small id="diskText">--</small></article>
+              <article class="metric-panel"><div class="metric-head"><span>网络</span><span id="networkState">在线</span></div><strong class="metric-text" id="network">--</strong><small id="uptime">--</small></article>
+            </div>
+          </section>
+
+          <section class="section-block" aria-labelledby="discoveryTitle">
+            <div class="section-heading"><div><p class="eyebrow">READ-ONLY DISPLAY DISCOVERY</p><h2 id="discoveryTitle">显示输出</h2></div><span class="section-note">仅读取 connector 状态，不切换显示模式</span></div>
+            <div class="telemetry-grid wireless-grid single-metric-grid">
+              <article class="metric-panel"><div class="metric-head"><span>DRM OUTPUT</span><span id="displayCount">读取中</span></div><strong class="metric-text" id="displayPrimary">--</strong><small id="displayDetail">仅读取 connector 状态</small></article>
+            </div>
+          </section>
+
+          <section class="section-block" aria-labelledby="moduleTitle">
+            <div class="section-heading"><div><p class="eyebrow">INDEPENDENT TEST APPS</p><h2 id="moduleTitle">硬件工具</h2></div><span class="section-note" id="inventory">等待设备发现</span></div>
+            <div class="module-grid" id="moduleGrid"></div>
+          </section>
+
+        </section>
+
+        <section class="route-page tool-page" id="toolPage" hidden>
+          <header class="tool-hero" id="toolHero">
+            <div class="tool-ident"><span class="tool-glyph" id="toolGlyph"><svg class="module-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M11 9h4a2 2 0 0 0 2-2V3M7 21v-4a2 2 0 0 1 2-2h4"></path><circle cx="9" cy="9" r="2"></circle><circle cx="15" cy="15" r="2"></circle></svg></span><div><p class="eyebrow" id="toolCategory">HARDWARE TOOL</p><h2 id="toolTitle">GPIO</h2><p id="toolDescription">输入输出与电平读回</p></div></div>
+            <div class="tool-health"><span class="status-dot" id="toolStatusDot"></span><span id="toolAvailability">等待设备状态</span></div>
+          </header>
+
+          <div class="tool-view accent-gpio" data-tool="gpio">
+            <section class="work-pane"><header><span>01</span><div><h3>配置 GPIO</h3><p>选择引脚与工作模式</p></div></header><div class="form-stack"><label>GPIO 引脚<input id="gpioPin" name="gpioPin" value="GPIO1_B1" autocomplete="off"></label><label>工作模式<select id="gpioMode" name="gpioMode"><option value="in">输入</option><option value="out">输出</option></select></label><label class="switch-row"><input id="gpioHigh" name="gpioHigh" type="checkbox"><span><strong>输出高电平</strong><small>仅在输出模式下生效</small></span></label><div class="warning-block">请先核对底板原理图与复用关系，避免对外部驱动信号强制输出。</div></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>执行操作</h3><p>应用配置后读取电平确认</p></div></header><div class="action-stack"><button class="button primary control-action" data-action="gpio-apply">应用 GPIO 配置</button><button class="button secondary control-action" data-action="gpio-read">读取当前电平</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>状态与结果</h3><p>后端反馈和最近操作</p></div></header><div class="status-list"><div><span>后端</span><strong id="gpioBackendState">--</strong></div><div><span>模式</span><strong id="gpioModeState">输入</strong></div></div><pre class="operation-log" aria-live="polite">等待 GPIO 操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-uart" data-tool="uart" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>串口参数</h3><p>与目标设备保持一致</p></div></header><div class="form-grid"><label class="wide">串口设备<select id="serialDevice" name="serialDevice"></select></label><label>波特率<select id="uartBaud" name="uartBaud"><option>9600</option><option selected>115200</option><option>921600</option></select></label><label>数据位<select id="uartDataBits" name="uartDataBits"><option>7</option><option selected>8</option></select></label><label>校验位<select id="uartParity" name="uartParity"><option>None</option><option>Even</option><option>Odd</option></select></label><label>停止位<select id="uartStopBits" name="uartStopBits"><option selected>1</option><option>2</option></select></label><label class="wide">流控<select id="uartFlow" name="uartFlow"><option>None</option><option>Hardware</option><option>Software</option></select></label></div><div class="info-block">UART 设备不等同于 RS485。只有设备树启用对应 UART、底板已接入 RS485 收发器并确认方向控制后，才能执行外部回环验证。</div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>收发测试</h3><p>发送固定帧并读取样本</p></div></header><div class="sample-frame"><span>TEST FRAME</span><code>55 AA 01 02 03 0D 0A</code></div><div class="action-stack"><button class="button primary control-action" data-action="uart-tx">发送测试帧</button><button class="button secondary control-action" data-action="uart-rx">读取串口样本</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>串口状态</h3><p>设备发现与收发结果</p></div></header><div class="status-list"><div><span>设备</span><strong id="uartStatus">--</strong></div><div><span>格式</span><strong id="uartFormat">8-N-1</strong></div></div><pre class="operation-log" aria-live="polite">等待串口操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-ethernet" data-tool="ethernet" hidden>
+            <section class="work-pane ethernet-device-pane"><header><span>01</span><div><h3>接口与地址</h3><p>先确认网线链路和当前 IPv4</p></div></header><div class="form-stack"><label>以太网接口<select id="ethernetInterface" name="ethernetInterface"></select></label><div class="network-address-readout ethernet-address-readout" id="ethernetAddressReadout" data-state="waiting" aria-live="polite"><span>当前以太网 IPv4</span><strong id="ethernetIpv4">等待读取</strong><small id="ethernetIpv4Note">读取接口状态后显示实际地址。</small></div><div class="network-link-summary"><span>物理链路</span><strong id="ethernetLinkInline">等待读取</strong></div><div class="info-block network-diagnostic" id="ethernetDiagnostic">先刷新接口状态，确认网线、链路和 IPv4。</div><label class="switch-row"><input id="ethernetUnlock" name="ethernetUnlock" type="checkbox"><span><strong>解锁网络修改</strong><small>DHCP 和静态地址会改变当前连接；日常 Ping 测试无需解锁。</small></span></label><div class="form-grid network-fields"><label>IPv4<input id="ethIp" name="ethIp" value="192.168.1.118"></label><label>子网掩码<input id="ethMask" name="ethMask" value="255.255.255.0"></label><label>网关<input id="ethGateway" name="ethGateway" value="192.168.1.1"></label><label>DNS<input id="ethDns1" name="ethDns1" value="223.5.5.5"></label></div></div></section>
+            <section class="work-pane operation-pane ethernet-operation-pane"><header><span>02</span><div><h3>连通性与配置</h3><p>默认先 Ping 百度，再按需调整地址</p></div></header><div class="network-flow-note"><span>默认验收</span><strong id="ethernetReadySummary">确认链路和 IPv4 后执行 Ping 百度</strong></div><div class="form-stack"><label>Ping 目标<input id="pingTarget" name="pingTarget" value="www.baidu.com" placeholder="默认：www.baidu.com"></label></div><div class="action-stack"><button class="button primary control-action" data-action="ping-interface">Ping 百度</button><button class="button secondary control-action" data-action="ethernet-refresh">刷新接口状态</button></div><div class="configuration-separator"><span>地址配置</span></div><div class="action-stack"><button class="button primary control-action requires-network-unlock" data-action="ethernet-dhcp" disabled>启用 DHCP</button><button class="button danger control-action requires-network-unlock" data-action="ethernet-static" disabled>应用静态地址</button></div></section>
+            <section class="work-pane status-pane ethernet-status-pane"><header><span>03</span><div><h3>链路与 Ping 结果</h3><p>结论在上，原始反馈保留在操作记录</p></div></header><div class="network-result-readout" id="ethernetPingResult" data-state="waiting" aria-live="polite"><span>Ping 结果</span><strong>等待 Ping 百度</strong><small>默认目标：www.baidu.com</small></div><div class="status-list"><div><span>接口</span><strong id="ethernetStatus">--</strong></div><div><span>物理链路</span><strong id="ethernetLinkState">--</strong></div><div><span>IPv4</span><strong id="ethernetIpv4Status">--</strong></div><div><span>当前目标</span><strong id="ethernetPingTargetStatus">www.baidu.com</strong></div><div><span>修改权限</span><strong id="ethernetLockState">已锁定</strong></div></div><pre class="operation-log" aria-live="polite">等待网络操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-can" data-tool="can" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>CAN 总线</h3><p>当前版本仅验证经典 CAN 标准数据帧</p></div></header><div class="form-stack"><label>CAN 接口<select id="canInterface" name="canInterface"></select></label><div class="form-grid"><label>仲裁速率<input id="canBitrate" name="canBitrate" type="number" value="500000"></label><label>数据速率（FD 未启用）<input id="canDataBitrate" name="canDataBitrate" type="number" value="2000000" disabled></label></div><label class="switch-row"><input id="canFd" name="canFd" type="checkbox" disabled><span><strong>CAN FD（暂不支持）</strong><small>未实现 CAN FD 帧收发验证，不能作为验收项</small></span></label><label class="switch-row"><input id="canAuthorize" name="canAuthorize" type="checkbox"><span><strong>授权控制真实总线</strong><small>授权状态会随请求一并由后端校验；请先确认收发器和终端电阻</small></span></label></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>总线操作</h3><p>打开后执行收发或循环测试</p></div></header><div class="action-grid"><button class="button primary can-authorized control-action" data-action="can-open" disabled>打开总线</button><button class="button secondary can-authorized control-action" data-action="can-rx" disabled>读取帧</button><button class="button secondary can-authorized control-action" data-action="can-tx" disabled>发送帧</button><button class="button secondary can-authorized control-action" data-action="can-close" disabled>关闭总线</button><button class="button danger can-authorized confirm-action" data-action="can-loop-start" disabled>开始循环发送</button><button class="button stop control-action" data-action="can-loop-stop">停止循环</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>总线状态</h3><p>接口发现与收发结果</p></div></header><div class="status-list"><div><span>接口</span><strong id="canStatus">--</strong></div><div><span>控制授权</span><strong id="canAuthState">未授权</strong></div></div><pre class="operation-log" aria-live="polite">等待 CAN 操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-cellular" data-tool="cellular" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>蜂窝网络</h3><p>自动识别模组，按兼容版本拨号</p></div></header><div class="form-stack"><label>APN<input id="cellularApn" name="cellularApn" placeholder="留空使用模组默认 APN"></label><label>数据接口（自动检测，可覆盖）<input id="cellularInterface" name="cellularInterface" placeholder="等待自动识别，例如 usb0"></label><label class="switch-row"><input id="cellularAuthorize" name="cellularAuthorize" type="checkbox"><span><strong>授权控制模组</strong><small>拨号会启动受控 Quectel 程序，停止仅影响本平台启动的进程。</small></span></label></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>模组操作</h3><p>先核对 USB 身份，再初始化和验证联网</p></div></header><div class="action-stack"><button class="button primary cellular-authorized control-action" data-action="cellular-start" disabled>识别后拨号</button><button class="button secondary control-action" data-action="cellular-status" disabled>检查模组状态</button><button class="button secondary cellular-authorized control-action" data-action="cellular-ping" disabled>联网测试</button><button class="button stop control-action" data-action="cellular-stop">停止蜂窝连接</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>识别与链路</h3><p>显示后端选定的程序，不接受浏览器覆盖</p></div></header><div class="status-list"><div><span>检测模组</span><strong id="cellularModuleStatus">正在识别</strong></div><div><span>拨号程序</span><strong id="cellularDialerStatus">--</strong></div><div><span>DHCP 客户端</span><strong id="cellularDhcpStatus">--</strong></div><div><span>数据接口</span><strong id="cellularInterfaceStatus">--</strong></div><div><span>控制授权</span><strong id="cellularAuthState">未授权</strong></div></div><pre class="operation-log" aria-live="polite">等待蜂窝网络操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-camera" data-tool="camera" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>视频节点</h3><p>优先选择已验证的 MIPI / ISP 采集路径</p></div></header><div class="form-stack"><label>摄像头设备<select id="cameraDevice" name="cameraDevice"></select></label><div class="info-block">实时预览仅使用当前发现的采集节点。MIPI 摄像头优先采用 RKISP NV12 低延迟配置，格式不兼容时自动回退协商。</div><p class="availability-note" id="cameraPreviewAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane camera-operation-pane"><header><span>02</span><div><h3>Web 实时预览</h3><p>经认证传输 JPEG 帧，不向浏览器暴露本地采集路径</p></div></header><div class="camera-preview-frame" id="cameraPreviewFrame" data-state="waiting"><img id="cameraPreview" alt="摄像头实时预览画面" hidden><div class="camera-preview-empty" id="cameraPreviewEmpty"><svg class="module-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m16 13 5 3-5 3z"></path><rect width="13" height="12" x="3" y="6" rx="2"></rect></svg><strong id="cameraPreviewTitle">等待实时预览</strong><span id="cameraPreviewDetail">选择 MIPI 摄像头后启动 Web 实时预览，首帧到达后会自动显示。</span></div></div><div class="action-grid"><button class="button primary control-action" data-action="camera-preview-start">启动实时预览</button><button class="button stop control-action" data-action="camera-preview-stop">停止实时预览</button></div><div class="configuration-separator"><span>V4L2 采集自检</span></div><div class="action-grid"><button class="button secondary control-action" data-action="camera-start">运行 15 秒自检</button><button class="button stop control-action" data-action="camera-stop">停止自检</button></div><p class="preview-session-notice">实时预览与采集自检不要同时运行；如节点被占用，请先停止另一项摄像头任务。</p></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>预览状态</h3><p>浏览器画面、节点与最近操作</p></div></header><div class="status-list"><div><span>预览</span><strong id="cameraPreviewState">未启动</strong></div><div><span>节点</span><strong id="cameraStatus">--</strong></div><div><span>采集模式</span><strong id="cameraMode">自动识别</strong></div><div><span>浏览器帧率</span><strong id="cameraPreviewRate">--</strong></div></div><pre class="operation-log" aria-live="polite">等待摄像头操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-hdmiin" data-tool="hdmiin" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>HDMI 输入节点</h3><p>选择 rk_hdmirx 采集设备</p></div></header><div class="form-stack"><label>HDMIIN 设备<select id="hdmiDevice" name="hdmiDevice"></select></label><div class="info-block">HDMI 输入使用独立采集节点，不会复用普通摄像头选择。</div></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>输入验证</h3><p>启动并确认信号采集状态</p></div></header><div class="action-stack"><button class="button primary control-action" data-action="hdmiin-start">启动 HDMI 输入</button><button class="button stop control-action" data-action="hdmiin-stop">停止 HDMI 输入</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>输入状态</h3><p>信号节点与操作结果</p></div></header><div class="status-list"><div><span>节点</span><strong id="hdmiStatus">--</strong></div><div><span>源信号</span><strong id="hdmiSignal">读取中</strong></div><div><span>模式</span><strong>HDMI IN</strong></div></div><pre class="operation-log" aria-live="polite">等待 HDMI 输入操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-watchdog" data-tool="watchdog" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>看门狗配置</h3><p>高风险操作，谨慎执行</p></div></header><div class="form-stack"><label>看门狗设备<select id="watchdogDevice" name="watchdogDevice"></select></label><label>超时时间（秒）<input id="watchdogTimeout" name="watchdogTimeout" type="number" min="5" max="120" value="5"></label><label class="switch-row danger-switch"><input id="watchdogConfirm" name="watchdogConfirm" type="checkbox"><span><strong>我确认允许开发板复位</strong><small>启动测试后系统可能在超时后重启</small></span></label><div class="danger-block">请先保存数据并断开正在执行的刷写、备份或文件传输任务。</div></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>看门狗操作</h3><p>先读取状态，再启动复位测试</p></div></header><div class="action-stack"><button class="button secondary control-action" data-action="watchdog-status">读取 wdctl 状态</button><button class="button danger confirm-action" data-action="watchdog-start">启动复位测试</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>安全状态</h3><p>设备发现与操作结果</p></div></header><div class="status-list"><div><span>设备</span><strong id="watchdogStatusText">--</strong></div><div><span>复位授权</span><strong id="watchdogConfirmState">未确认</strong></div></div><pre class="operation-log" aria-live="polite">等待看门狗操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-gpu" data-tool="gpu" hidden>
+            <section class="work-pane gpu-profile-pane">
+              <header><span>01</span><div><h3>评分与演示</h3><p>离屏得分用于比较，图形窗口用于确认实际渲染</p></div></header>
+              <div class="benchmark-spec">
+                <span class="benchmark-spec-label">REPEATABLE SCORE</span>
+                <strong>glmark2-es · refract</strong>
+                <dl><div><dt>画布</dt><dd>640 × 480 离屏</dd></div><div><dt>时长</dt><dd>3 秒固定场景</dd></div><div><dt>用途</dt><dd>记录可比较得分</dd></div></dl>
+              </div>
+              <div class="preview-spec">
+                <span class="benchmark-spec-label">VISIBLE PREVIEW</span>
+                <strong>Qt Quick · ShaderEffect</strong>
+                <dl><div><dt>画布</dt><dd>Qt GPU 测试页内嵌窗口</dd></div><div><dt>时长</dt><dd>手动停止</dd></div><div><dt>用途</dt><dd>实时观察 GPU 图形渲染</dd></div></dl>
+              </div>
+              <p class="preview-session-notice" id="gpuPreviewNotice" role="status" aria-live="polite">内嵌预览显示在开发板的 Qt GPU 测试页中。</p>
+              <p class="availability-note" id="gpuAvailability" hidden></p>
+            </section>
+            <section class="work-pane operation-pane gpu-operation-pane">
+              <header><span>02</span><div><h3>运行 GPU</h3><p>离屏评分与 Qt 页面内嵌预览互斥</p></div></header>
+              <div class="action-stack">
+                <button class="button primary control-action" data-action="gpu-start">运行离屏评分</button>
+                <button class="button stop control-action" data-action="gpu-stop">停止离屏评分</button>
+                <button class="button primary preview-action control-action" data-action="gpu-preview-start"><span id="gpuPreviewStartLabel">在 Qt GPU 测试页启动内嵌预览</span></button>
+                <button class="button stop control-action" data-action="gpu-preview-stop">停止内嵌 GPU 预览</button>
+              </div>
+              <div class="info-block">内嵌预览不会创建独立 Weston 窗口。图像显示在开发板原生 Qt 的 GPU 测试页；浏览器用于发起操作、查看状态与离屏得分。</div>
+            </section>
+            <section class="work-pane status-pane gpu-status-pane">
+              <header><span>03</span><div><h3>结果与输出</h3><p>评分数据、内嵌预览状态与 Mali 驱动反馈</p></div></header>
+              <div class="status-list">
+                <div><span>离屏评分</span><strong id="gpuRunState">等待发现</strong></div>
+                <div><span>评分显示会话</span><strong id="gpuDisplayStrategy">--</strong></div>
+                <div><span>评分渲染器</span><strong id="gpuRenderer">--</strong></div>
+                <div><span>得分</span><strong id="gpuScore">--</strong></div>
+                <div><span>评分耗时</span><strong id="gpuElapsed">--</strong></div>
+                <div><span>内嵌图形预览</span><strong id="gpuPreviewState">等待检查</strong></div>
+                <div><span>预览显示位置</span><strong id="gpuPreviewTarget">--</strong></div>
+                <div><span>预览渲染器</span><strong id="gpuPreviewRenderer">--</strong></div>
+                <div><span>预览耗时</span><strong id="gpuPreviewElapsed">--</strong></div>
+              </div>
+              <div class="runtime-log-block"><div class="runtime-log-heading"><span>GLMARK2 OUTPUT</span><strong id="gpuBinary">--</strong></div><pre class="runtime-log" id="gpuRuntimeLog" aria-live="polite">等待 GPU 测试输出</pre></div><pre class="operation-log" aria-live="polite">等待 GPU 测试操作</pre>
+            </section>
+          </div>
+
+          <div class="tool-view accent-npu-yolo" data-tool="npu-yolo" hidden>
+            <section class="work-pane npu-overview-pane">
+              <header><span>01</span><div><h3>固定示例</h3><p>仅使用平台内置 YOLOv8 RKNN 模型和示例视频</p></div></header>
+              <div class="npu-preview-frame" id="npuYoloPreviewFrame" data-state="waiting">
+                <img id="npuYoloPreview" alt="YOLOv8 NPU 标注结果预览" hidden>
+                <div class="npu-preview-empty" id="npuYoloPreviewEmpty"><strong id="npuYoloPreviewTitle">等待推理预览</strong><span id="npuYoloPreviewDetail">开始固定示例后，这里会显示后端生成的标注画面。</span></div>
+              </div>
+              <div class="npu-progress-row"><progress id="npuYoloProgress" aria-label="NPU YOLO 推理进度" max="100" value="0"></progress><strong id="npuYoloProgressText">尚未开始</strong></div>
+              <div class="npu-telemetry-panel" id="npuTelemetryPanel" data-state="unavailable" aria-label="NPU 核心负载遥测">
+                <div class="npu-telemetry-heading"><div><span id="npuTelemetryTitle">NPU 核心利用率</span><strong id="npuTelemetryMode">遥测不可用</strong></div><small id="npuTelemetryDetail">运行内置 MP4 后将读取 NPU 负载。</small></div>
+                <div class="npu-telemetry-card-grid" aria-label="NPU 各核心利用率趋势">
+                  <article class="npu-telemetry-card npu-core-0" id="npuTelemetryCard0" data-state="unavailable" aria-labelledby="npuTelemetryCardTitle0 npuTelemetryNpu0" hidden>
+                    <header>
+                      <div><span class="npu-telemetry-card-title" id="npuTelemetryCardTitle0">NPU0</span><strong id="npuTelemetryNpu0">--</strong></div>
+                      <small id="npuTelemetryCoreState0" role="status" aria-live="polite">遥测不可用</small>
+                    </header>
+                    <div class="npu-telemetry-chart-wrap"><canvas id="npuTelemetryChart0" data-npu-telemetry-chart="0" role="img" aria-label="NPU0 利用率变化曲线"></canvas><span id="npuTelemetryChartEmpty0">NPU0 负载遥测不可用</span></div>
+                  </article>
+                  <article class="npu-telemetry-card npu-core-1" id="npuTelemetryCard1" data-state="unavailable" aria-labelledby="npuTelemetryCardTitle1 npuTelemetryNpu1" hidden>
+                    <header>
+                      <div><span class="npu-telemetry-card-title" id="npuTelemetryCardTitle1">NPU1</span><strong id="npuTelemetryNpu1">--</strong></div>
+                      <small id="npuTelemetryCoreState1" role="status" aria-live="polite">遥测不可用</small>
+                    </header>
+                    <div class="npu-telemetry-chart-wrap"><canvas id="npuTelemetryChart1" data-npu-telemetry-chart="1" role="img" aria-label="NPU1 利用率变化曲线"></canvas><span id="npuTelemetryChartEmpty1">NPU1 负载遥测不可用</span></div>
+                  </article>
+                  <article class="npu-telemetry-card npu-core-2" id="npuTelemetryCard2" data-state="unavailable" aria-labelledby="npuTelemetryCardTitle2 npuTelemetryNpu2" hidden>
+                    <header>
+                      <div><span class="npu-telemetry-card-title" id="npuTelemetryCardTitle2">NPU2</span><strong id="npuTelemetryNpu2">--</strong></div>
+                      <small id="npuTelemetryCoreState2" role="status" aria-live="polite">遥测不可用</small>
+                    </header>
+                    <div class="npu-telemetry-chart-wrap"><canvas id="npuTelemetryChart2" data-npu-telemetry-chart="2" role="img" aria-label="NPU2 利用率变化曲线"></canvas><span id="npuTelemetryChartEmpty2">NPU2 负载遥测不可用</span></div>
+                  </article>
+                </div>
+              </div>
+              <div class="info-block">此页面不上传文件，也不接受模型路径、视频路径或检测参数。远程操作始终执行开发板上经过验证的固定样例。</div>
+              <p class="availability-note" id="npuYoloAvailability" hidden></p>
+            </section>
+            <section class="work-pane operation-pane npu-operation-pane">
+              <header><span>02</span><div><h3>运行控制</h3><p>先检查运行环境，再执行一次非循环视频推理</p></div></header>
+              <div class="action-stack">
+                <button class="button secondary control-action" data-action="npu-yolo-discover">检查示例环境</button>
+                <button class="button primary control-action" data-action="npu-yolo-start">运行内置 MP4</button>
+                <button class="button stop control-action" data-action="npu-yolo-stop">停止视频推理</button>
+              </div>
+              <div class="npu-boundary-list" aria-label="NPU 示例运行边界"><span>已验证产品板型</span><span>一次性非循环运行</span><span>结果仅保留当前标注图</span></div>
+            </section>
+            <section class="work-pane status-pane npu-status-pane">
+              <header><span>03</span><div><h3>推理状态</h3><p>环境、进度与性能数据均来自同一固定任务</p></div></header>
+              <div class="status-list">
+                <div><span>当前状态</span><strong id="npuYoloRunState">等待检查</strong></div>
+                <div><span>板型支持</span><strong id="npuYoloProfile">--</strong></div>
+                <div><span>运行环境</span><strong id="npuYoloRuntime">--</strong></div>
+                <div><span>示例资源</span><strong id="npuYoloAssets">--</strong></div>
+                <div><span>处理进度</span><strong id="npuYoloFrames">--</strong></div>
+                <div><span>目标数量</span><strong id="npuYoloDetections">--</strong></div>
+                <div><span>平均推理</span><strong id="npuYoloInference">--</strong></div>
+                <div><span>吞吐</span><strong id="npuYoloFps">--</strong></div>
+              </div>
+              <pre class="operation-log" aria-live="polite">等待 NPU 示例状态</pre>
+            </section>
+          </div>
+
+          <div class="tool-view accent-wifi" data-tool="wifi" hidden>
+            <section class="work-pane wifi-device-pane"><header><span>01</span><div><h3>无线设备</h3><p>先读取 NetworkManager 管理的实际 Wi-Fi 网卡</p></div></header><div class="form-stack"><label>Wi-Fi 网卡<select id="wifiInterface" name="wifiInterface"></select></label><div class="info-block">选择加密热点后会先弹出独立密码输入步骤。密码仅随本次连接请求发送，不会写入操作记录或状态接口；隐藏网络请使用系统网络设置。</div><p class="availability-note" id="wifiAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane wifi-operation-pane"><header><span>02</span><div><h3>扫描与连接</h3><p>刷新状态后扫描热点，再选择目标网络</p></div></header><div class="action-grid wifi-action-grid"><button class="button secondary control-action" data-action="wifi-refresh">读取无线状态</button><button class="button primary control-action" data-action="wifi-scan">扫描热点</button><button class="button stop control-action wifi-disconnect-button" data-action="wifi-disconnect">断开 Wi-Fi</button></div><div class="wifi-network-list" id="wifiNetworks" aria-live="polite"><p class="empty-state">点击“读取无线状态”，确认网卡后扫描附近热点。</p></div></section>
+            <section class="work-pane status-pane wifi-status-pane"><header><span>03</span><div><h3>网络状态</h3><p>NetworkManager 反馈与最近操作</p></div></header><div class="network-address-readout wifi-address-readout" id="wifiAddressReadout" data-state="waiting" aria-live="polite"><span>当前 Wi-Fi IPv4</span><strong id="wifiIpv4">连接后显示 IPv4</strong><small id="wifiIpv4Note">连接成功后请使用此地址重新打开测试平台或远程桌面。</small></div><div class="status-list"><div><span>服务</span><strong id="wifiManagerState">等待读取</strong></div><div><span>无线电</span><strong id="wifiRadioState">--</strong></div><div><span>当前网卡</span><strong id="wifiSelectedDevice">--</strong></div><div><span>扫描缓存</span><strong id="wifiScanState">尚未扫描</strong></div></div><div class="wifi-session-warning" id="wifiSessionWarning" hidden><strong>连接提示</strong><span id="wifiSessionWarningText">切换无线网络后，当前浏览器连接可能断开。</span></div><pre class="operation-log" aria-live="polite">等待 Wi-Fi 操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-music" data-tool="music" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>音乐与录音</h3><p>先选择实际 ALSA 设备，再进行耳机、喇叭或麦克风验证</p></div></header><div class="form-stack"><label>播放设备<select id="audioPlaybackDevice" name="audioPlaybackDevice"></select></label><label>录音设备<select id="audioCaptureDevice" name="audioCaptureDevice"></select></label><label>播放设备音量 <span id="audioVolumeLabel">50%</span><input id="audioVolume" name="audioVolume" type="range" min="0" max="100" value="50"></label><div class="info-block">音量会应用到当前选择的播放设备。选择 HDMI 时只验证 HDMI；选择编解码器设备后才能用于耳机/喇叭或麦克风验收。录音临时保存至 <code>/tmp/boardlab-audio-test.wav</code>。</div><p class="availability-note" id="musicAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>试听操作</h3><p>一次只执行一个板端音频任务</p></div></header><div class="action-grid"><button class="button primary control-action" data-action="audio-play-test">播放耳机测试音</button><button class="button secondary control-action" data-action="audio-record">录音 2 秒</button><button class="button secondary control-action" data-action="audio-play-recorded">播放录音</button><button class="button secondary control-action" data-action="audio-volume">应用音量</button><button class="button stop control-action" data-action="audio-stop-audio">停止播放 / 录音</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>音乐状态</h3><p>ALSA 与后台任务反馈</p></div></header><div class="status-list"><div><span>音量</span><strong id="audioStatus">--</strong></div><div><span>任务</span><strong id="audioBusyState">空闲</strong></div></div><pre class="operation-log" aria-live="polite">等待音乐操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-buzzer" data-tool="buzzer" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3 id="buzzerConfigTitle">PWM 蜂鸣器</h3><p id="buzzerConfigDescription">由当前板型配置自动选择 PWM 通道</p></div></header><div class="form-stack"><label><span id="beepControlLabel">蜂鸣器强度</span> <span id="beepPercentLabel">50%</span><input id="beepPercent" name="beepPercent" type="range" min="1" max="100" value="50"></label><div class="info-block" id="buzzerControlHint">双短提示会自动停止；“应用蜂鸣器”会持续响，需手动停止。</div><p class="availability-note" id="buzzerAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>提示音操作</h3><p>与音乐任务共用硬件互斥锁</p></div></header><div class="action-stack"><button class="button primary control-action" data-action="audio-beep-apply">应用蜂鸣器</button><button class="button secondary control-action" data-action="audio-beep-heartbeat">双短提示</button><button class="button stop control-action" data-action="audio-beep-stop">停止蜂鸣器</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>蜂鸣器状态</h3><p id="buzzerStatusDescription">PWM 后台任务反馈</p></div></header><div class="status-list"><div><span id="beepStatusLabel">强度</span><strong id="beepStatus">--</strong></div><div><span>任务</span><strong id="beepBusyState">空闲</strong></div></div><pre class="operation-log" aria-live="polite">等待蜂鸣器操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-fan" data-tool="fan" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>风扇控制</h3><p>仅发现准确匹配的 pwmfan hwmon 节点后开放控制</p></div></header><div class="form-stack"><label>手动转速 <span id="fanPercentLabel">50%</span><input id="fanPercent" name="fanPercent" type="range" min="0" max="100" value="50"></label><p class="availability-note" id="fanAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>温控模式</h3><p>手动转速会先关闭内核温控；写入失败时后端会尝试恢复原模式</p></div></header><div class="action-stack"><button class="button primary control-action" data-action="fan-manual">应用手动转速</button><button class="button secondary control-action" data-action="fan-auto">恢复自动温控</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>风扇状态</h3><p>节点、模式与当前 PWM 输出</p></div></header><div class="status-list"><div><span>节点</span><strong id="fanNode">未发现 pwmfan</strong></div><div><span>模式</span><strong id="fanMode">不可用</strong></div><div><span>当前转速</span><strong id="fanCurrent">--</strong></div></div><pre class="operation-log" aria-live="polite">等待风扇操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-led" data-tool="led" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>板载 LED</h3><p>仅显示当前板型已声明的 LED</p></div></header><div class="form-stack"><label>LED 设备<select id="ledDevice" name="ledDevice"></select></label><label>亮度 <span id="ledPercentLabel">100%</span><input id="ledPercent" name="ledPercent" type="range" min="0" max="100" value="100"></label><div class="info-block">写入后会回读 brightness 确认，网页不能指定任意 sysfs 路径。</div><p class="availability-note" id="ledAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>灯光操作</h3><p>适用于当前板型声明的指示灯</p></div></header><div class="action-grid"><button class="button primary control-action" data-action="led-set">应用当前 LED</button><button class="button secondary control-action" data-action="led-all-on">全部点亮</button><button class="button secondary control-action" data-action="led-all-off">全部熄灭</button><button class="button secondary control-action" data-action="led-blink">闪烁 3 次</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>LED 状态</h3><p>设备发现与最近写入确认</p></div></header><div class="status-list"><div><span>设备</span><strong id="ledStatus">--</strong></div><div><span>当前亮度</span><strong id="ledCurrent">--</strong></div></div><pre class="operation-log" aria-live="polite">等待 LED 操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-environment" data-tool="environment" hidden>
+            <section class="work-pane environment-reading-pane"><header><span>01</span><div><h3>实时读数</h3><p>同一 IIO 设备的温度与相对湿度成对采样</p></div></header><div class="environment-reading-grid"><div class="environment-reading temperature"><span>温度</span><strong id="environmentTemperature">--</strong><small id="environmentTemperatureMeta">等待本轮采样</small></div><div class="environment-reading humidity"><span>相对湿度</span><strong id="environmentHumidity">--</strong><small id="environmentHumidityMeta">等待本轮采样</small></div></div><p class="availability-note" id="environmentAvailability" hidden></p></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>采样控制</h3><p>明确发起一次只读采样，再查看成对结果</p></div></header><div class="action-stack"><button class="button primary control-action" data-action="environment-refresh">重新采样</button></div><div class="info-block">DHT11 需要先读取温度，再等待传感器恢复后读取湿度。平台会保持最小采样间隔，不向 IIO 写入采样配置、阈值或校准值。</div></section>
+            <section class="work-pane status-pane environment-status-pane"><header><span>03</span><div><h3>数据来源与结果</h3><p>确认设备树证据、通道与本轮新鲜度</p></div></header><div class="status-list"><div><span>设备</span><strong id="environmentDevice">--</strong></div><div><span>状态</span><strong id="environmentState">等待发现</strong></div><div><span>采样时间</span><strong id="environmentUpdatedAt">--</strong></div></div><div class="environment-channel-list" id="environmentChannels"><p class="empty-state">等待温湿度传感器发现</p></div><pre class="operation-log" aria-live="polite">进入页面后点击“重新采样”开始读取</pre></section>
+          </div>
+
+          <div class="tool-view accent-keys" data-tool="keys" hidden>
+            <section class="work-pane key-device-pane"><header><span>01</span><div><h3>选择板载按键</h3><p>只列出设备树确认的 ADC / GPIO 用户按键</p></div></header><div class="form-stack"><label>检测设备<select id="keyTestDevice" name="keyTestDevice"></select></label><div class="info-block">电源键、耳机键、USB 键盘及其他外设会被后端排除。选择稳定设备标识后，后端会在启动监听前再次解析当前事件节点。</div><p class="availability-note" id="keysAvailability" hidden></p></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>按键测试</h3><p>点击开始后，依次按下并松开每个板载用户按键</p></div></header><div class="action-grid"><button class="button primary control-action" data-action="keys-start">开始监听</button><button class="button stop control-action" data-action="keys-stop">停止监听</button><button class="button secondary control-action" data-action="keys-clear">清空记录</button></div><div class="key-expected"><span>待验证</span><strong id="keyExpectedKeys">--</strong></div></section>
+            <section class="work-pane status-pane key-status-pane"><header><span>03</span><div><h3>实时结果</h3><p>仅记录语义化按下 / 松开事件，不抢占系统按键</p></div></header><div class="status-list"><div><span>监听状态</span><strong id="keyCaptureState">未开始</strong></div><div><span>已完成</span><strong id="keyPassCount">0</strong></div><div><span>最近事件</span><strong id="keyLastEvent">--</strong></div></div><ol class="key-event-list" id="keyEventList"><li class="empty-state">点击“开始监听”后按下开发板用户按键。</li></ol><pre class="operation-log" aria-live="polite">等待按键测试</pre></section>
+          </div>
+
+          <div class="tool-view accent-backlight" data-tool="backlight" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>背光参数</h3><p>读取设备并设置亮度</p></div></header><div class="form-stack"><label>背光亮度 <span id="backlightLabel">50%</span><input id="backlightPercent" name="backlightPercent" type="range" min="1" max="100" value="50"></label><div class="info-block">亮度写入会直接影响本地显示屏，远程 Web 页面不受影响。</div></div></section>
+            <section class="work-pane operation-pane"><header><span>02</span><div><h3>亮度操作</h3><p>应用后由板端读取实际值</p></div></header><div class="action-stack"><button class="button primary control-action" data-action="backlight-set">应用背光亮度</button></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>背光状态</h3><p>设备可用性与实际亮度</p></div></header><div class="status-list"><div><span>设备</span><strong id="backlightStatus">--</strong></div><div><span>当前亮度</span><strong id="backlightCurrent">--</strong></div></div><pre class="operation-log" aria-live="polite">等待背光操作</pre></section>
+          </div>
+
+          <div class="tool-view accent-storage" data-tool="storage" hidden>
+            <section class="work-pane storage-safety-pane"><header><span>01</span><div><h3>安全模式</h3><p>先识别分区，再确认需要的操作</p></div></header><div class="form-stack"><label class="switch-row"><input id="storageWriteConfirm" name="storageWriteConfirm" type="checkbox"><span><strong>确认允许测速临时写入</strong><small>测速会写入并删除一个 100 MiB 文件；未确认时保持只读与挂载操作。</small></span></label><div class="warning-block">系统根分区、启动分区和 Swap 会被后端保护。网页只会使用后端给出的设备与挂载目录，不能输入任意路径。</div><div class="storage-mode-line"><span>当前模式</span><strong id="storageWriteState">只读模式</strong></div></div></section>
+            <section class="work-pane storage-device-pane"><header><span>02</span><div><h3>发现的存储分区</h3><p>U 盘、TF、NVMe、SATA 与 eMMC 均会按系统实际节点显示</p></div><button class="button secondary control-action storage-scan-button" id="storageScanButton" type="button" data-action="storage-scan">重新扫描</button></header><div class="storage-device-list" id="storageDevices"><div class="storage-empty-state"><strong>等待扫描存储设备</strong><span>插入外部存储后点击“重新扫描”。</span></div></div></section>
+            <section class="work-pane status-pane storage-status-pane"><header><span>03</span><div><h3>存储结果</h3><p>挂载、卸载和测速的最终反馈</p></div></header><div class="status-list"><div><span>已发现</span><strong id="storageStatus">--</strong></div><div><span>分区数</span><strong id="storageDeviceCount">--</strong></div><div><span>测速写入</span><strong id="storageWriteStateMirror">确认前不可用</strong></div></div><pre class="operation-log" aria-live="polite">进入页面后会自动扫描存储设备</pre></section>
+          </div>
+
+          <div class="tool-view accent-files" data-tool="files" hidden>
+            <section class="work-pane"><header><span>01</span><div><h3>当前路径</h3><p>浏览板端目录结构</p></div></header><div class="path-block"><span>PATH</span><strong id="currentPath">/</strong></div><button class="button secondary control-action" data-action="files-up">返回上一级</button></section>
+            <section class="work-pane file-browser-pane"><header><span>02</span><div><h3>目录内容</h3><p>选择目录继续进入</p></div></header><div class="files" id="files"><p class="empty-state">等待目录数据</p></div></section>
+            <section class="work-pane status-pane"><header><span>03</span><div><h3>浏览状态</h3><p>路径变更与后端结果</p></div></header><div class="status-list"><div><span>条目</span><strong id="fileCount">--</strong></div><div><span>权限</span><strong>板端进程权限</strong></div></div><pre class="operation-log" aria-live="polite">等待文件操作</pre></section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <dialog class="confirm-dialog" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <form method="dialog">
+      <span class="dialog-kicker">确认硬件操作</span>
+      <h2 id="confirmTitle">确认执行？</h2>
+      <p id="confirmMessage">该操作将改变开发板状态。</p>
+      <div class="dialog-actions"><button class="button secondary" value="cancel">取消</button><button class="button danger" id="confirmSubmit" value="confirm">确认执行</button></div>
+    </form>
+  </dialog>
+  <dialog class="confirm-dialog wifi-password-dialog" id="wifiPasswordDialog" aria-labelledby="wifiPasswordTitle" aria-describedby="wifiPasswordMessage">
+    <form method="dialog">
+      <span class="dialog-kicker">安全 Wi-Fi 连接</span>
+      <h2 id="wifiPasswordTitle">输入网络密码</h2>
+      <p id="wifiPasswordMessage">请填写所选加密热点的密码。</p>
+      <label class="dialog-field" for="wifiConnectPassword">Wi-Fi 密码
+        <div class="password-field"><input id="wifiConnectPassword" name="wifiConnectPassword" type="password" autocomplete="current-password" spellcheck="false" maxlength="256" required><button class="field-action" id="toggleWifiConnectPassword" type="button" aria-label="显示 Wi-Fi 密码" aria-pressed="false" aria-controls="wifiConnectPassword"><svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696C3.423 7.594 7.36 5 12 5c4.639 0 8.573 2.594 9.938 6.652a1 1 0 0 1 0 .696C20.577 16.406 16.64 19 12 19c-4.639 0-8.573-2.594-9.938-6.652Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+      </label>
+      <p class="auth-error" id="wifiPasswordError" role="alert"></p>
+      <div class="dialog-actions"><button class="button secondary" value="cancel">取消</button><button class="button primary" value="connect">连接网络</button></div>
+    </form>
+  </dialog>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

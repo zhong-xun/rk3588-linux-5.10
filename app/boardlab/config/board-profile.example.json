@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "id": "customer-rk3399-carrier",
+    "displayName": "Customer RK3399 Carrier",
+    "socFamily": "RK3399"
+  },
+  "match": {
+    "compatible": [
+      "customer,rk3399-carrier"
+    ],
+    "modelContains": "Customer RK3399"
+  },
+  "capabilities": {
+    "gpio": true,
+    "led": true,
+    "rs485": true,
+    "npu": true,
+    "npuyolodemo": true,
+    "hdmiin": false
+  },
+  "gpioAliases": {
+    "STATUS_OUT": "gpiochip1:12",
+    "USER_KEY": "line:user-key",
+    "LEGACY_TEST": 43
+  },
+  "ledPaths": [
+    "/sys/class/leds/status"
+  ],
+  "npuYolo": {
+    "platformId": "rk3399",
+    "displayName": "RK3399",
+    "modelFileName": "yolov8n_rk3399.rknn",
+    "workerCount": 1,
+    "telemetryCoreCount": 1,
+    "pinWorkersToCores": false
+  }
+}

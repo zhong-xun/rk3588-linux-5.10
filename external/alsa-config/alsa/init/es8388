@@ -1,0 +1,15 @@
+# Configuration for es8388 driver
+
+#playback
+CTL{reset}="mixer"
+CTL{name}="Headphone Switch", CTL{value}="on"
+CTL{name}="Speaker Switch", CTL{value}="on"
+CTL{name}="Output 1 Playback Volume", CTL{value}="31, 31"
+CTL{name}="Output 2 Playback Volume", CTL{value}="31, 31"
+CTL{name}="Left Mixer Left Playback Switch", CTL{value}="on"
+CTL{name}="Right Mixer Right Playback Switch", CTL{value}="on"
+
+#record
+CTL{name}="Main Mic Switch", CTL{value}="on"
+
+RESULT="true", EXIT="return"

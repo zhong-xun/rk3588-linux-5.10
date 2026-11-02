@@ -1,0 +1,8 @@
+// Allow trusted board administrators to launch only the BoardLab root runner
+// without an interactive password prompt.
+polkit.addRule(function(action, subject) {
+    if (action.id == "com.boardlab.root.run" &&
+            subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
+    }
+});

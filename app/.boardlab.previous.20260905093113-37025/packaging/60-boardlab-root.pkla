@@ -1,0 +1,6 @@
+[Allow BoardLab root runner]
+Identity=unix-group:sudo
+Action=com.boardlab.root.run
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

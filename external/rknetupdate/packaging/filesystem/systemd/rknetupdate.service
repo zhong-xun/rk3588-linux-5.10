@@ -1,0 +1,30 @@
+[Unit]
+Description=Rockchip LAN Image Update Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/sbin/rknetupdate --config /etc/rknetupdate.conf
+Restart=on-failure
+RestartSec=3
+UMask=0077
+StateDirectory=rknetupdate
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+# systemctl/reboot updates /run/systemd/reboot-param before asking PID 1 for a
+# clean shutdown. Keep the rest of the strict filesystem sandbox read-only.
+ReadWritePaths=/var/lib/rknetupdate /run/systemd
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,86 @@
+#!/bin/sh
+#
+# Start the stock Rockchip recovery unless S39 selected an RKNetUpdate path
+# that must suppress the stock updater.
+#
+
+SUPPRESS_STOCK=/run/rknetupdate-stock-recovery-suppressed
+STOCK_READY=/run/rknetupdate-stock-update-ready
+UPDATEIMG_STATE=/userdata/rknetupdate/updateimg-v1/state.json
+UPDATEIMG_MANIFEST=/userdata/rknetupdate/updateimg-v1/updateimg.manifest.json
+UPDATEIMG_PACKAGE=/userdata/update.img
+BOOTLOADER_ALIAS=/dev/block/by-name/bootloader
+
+# updateEngine writes the MiniLoaderAll.bin item through a by-name path even
+# though Rockchip's loader area is before GPT and has no partition entry. Only
+# the hash-bound RKNetUpdate stock-pending handoff gets this ephemeral alias.
+prepare_managed_loader_target()
+{
+	[ -e "$STOCK_READY" ] || return 0
+	[ -r "$UPDATEIMG_STATE" ] || {
+		echo "rknetupdate: managed update.img state is missing"
+		return 1
+	}
+	grep -q '"phase"[[:space:]]*:[[:space:]]*"stock-pending"' "$UPDATEIMG_STATE" || {
+		echo "rknetupdate: managed update.img state is not stock-pending"
+		return 1
+	}
+	[ -r "$UPDATEIMG_MANIFEST" ] || {
+		echo "rknetupdate: managed update.img manifest is missing"
+		return 1
+	}
+	[ -r "$UPDATEIMG_PACKAGE" ] || {
+		echo "rknetupdate: canonical /userdata/update.img is missing"
+		return 1
+	}
+	[ -b /dev/mmcblk0 ] || {
+		echo "rknetupdate: eMMC is unavailable for managed bootloader update"
+		return 1
+	}
+	mkdir -p /dev/block/by-name || return 1
+	if [ -e "$BOOTLOADER_ALIAS" ] && [ ! -L "$BOOTLOADER_ALIAS" ]; then
+		echo "rknetupdate: refusing to replace non-link $BOOTLOADER_ALIAS"
+		return 1
+	fi
+	if [ -L "$BOOTLOADER_ALIAS" ] && [ "$(readlink "$BOOTLOADER_ALIAS")" != "/dev/mmcblk0" ]; then
+		echo "rknetupdate: refusing unexpected $BOOTLOADER_ALIAS target"
+		return 1
+	fi
+	[ -L "$BOOTLOADER_ALIAS" ] || ln -s /dev/mmcblk0 "$BOOTLOADER_ALIAS"
+}
+
+case "$1" in
+	start)
+		if [ -e "$SUPPRESS_STOCK" ]; then
+			echo "rknetupdate: standard recovery UI suppressed; staying in controlled recovery mode"
+			exit 0
+		fi
+		if ! prepare_managed_loader_target; then
+			echo "rknetupdate: managed loader target preparation failed; staying in recovery rescue mode"
+			exit 0
+		fi
+		if [ -e "$STOCK_READY" ]; then
+			echo "rknetupdate: managed update.img handoff ready; starting Rockchip updater in the current recovery boot"
+		fi
+		echo "starting recovery... "
+		touch /dev/.coldboot_done
+		if [ -e "$STOCK_READY" ] && [ -c /dev/console ]; then
+			# Keep recovery's LOGI stream on the serial console while the
+			# managed Rockchip updater mirrors its UI progress there.
+			touch /.rkdebug
+			echo "rknetupdate: mirroring Rockchip updater progress to /dev/console" > /dev/console
+			/usr/bin/recovery > /dev/console 2>&1 &
+		else
+			/usr/bin/recovery &
+		fi
+		;;
+	stop)
+		killall recovery
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
+
+exit 0
